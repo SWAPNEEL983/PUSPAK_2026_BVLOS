@@ -52,7 +52,7 @@ A proof-of-concept simulator for a UAV swarm that surveys a disaster area for Po
 ## Repository structure
 
 ```
-[ repo-name ]/
+PUSHPAK_2026_BVLOS/
 ├── requirements.txt                       # Python dependencies
 ├── sector_sweep.py                        # Continuous-space simulator (tether, connectivity-preserving moves, make-before-break)
 ├── fleet_sweep.py                         # Fixed-fleet Monte Carlo success-rate sweep (imports sector_sweep.py)
@@ -126,13 +126,13 @@ Not yet measured: packet delivery ratio, latency, connectivity availability, rec
 ---
 
 ## Roadmap
-- [ ] Finish the fleet sweep on 30+ layouts and find the smallest fleet with ≥ 95% success
-- [ ] Priority weighting for newly emerging high-priority regions
-- [ ] Inject UAV failures, link outages and packet loss; measure recovery time and PDR
-- [ ] Explicit geofence and charge-constraint checks in the metrics
-- [ ] Verify that `max_tether_gap_m` is 0 after the tether fixes
-- [ ] Merge PoI links at discovery, add Steiner points and drop-off relays to lower peak fleet size
-- [ ] Adopt the organizers' benchmark scenarios and standardised log format
+-  Finish the fleet sweep on 30+ layouts and find the smallest fleet with ≥ 95% success
+-  Priority weighting for newly emerging high-priority regions
+-  Inject UAV failures, link outages and packet loss; measure recovery time and PDR
+-  Explicit geofence and charge-constraint checks in the metrics
+-  Verify that `max_tether_gap_m` is 0 after the tether fixes
+-  Merge PoI links at discovery, add Steiner points and drop-off relays to lower peak fleet size
+-  Adopt the organizers' benchmark scenarios and standardised log format
 
 ---
 
