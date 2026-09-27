@@ -1,6 +1,6 @@
 # UAV-X: Resilient BVLOS Swarm — Sector Sweep / T-Sweep Simulator
 
-Submission for **Grand Challenge 1 — UAV-X: Resilient BVLOS Swarm Challenge**, PUSHPAK Grand Challenge 2026 (IIT Bombay Techfest 2026-27, presented by IISER Bhopal).
+Submission for **Grand Challenge 1 — UAV-X: Resilient BVLOS Swarm Challenge**, PUSHPAK Grand Challenge 2026 (IIT Bombay Techfest 2026-27).
 
 A proof-of-concept simulator for a UAV swarm that surveys a disaster area for Points of Interest (PoIs). The swarm keeps an end-to-end multi-hop radio link to a Ground Control Station (GCS) outside the area, and it manages battery endurance by relieving UAVs on schedule.
 
