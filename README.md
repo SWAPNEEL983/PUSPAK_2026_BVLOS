@@ -4,7 +4,7 @@ Submission for **Grand Challenge 1 — UAV-X: Resilient BVLOS Swarm Challenge**,
 
 A proof-of-concept simulator for a UAV swarm that surveys a disaster area for Points of Interest (PoIs). The swarm keeps an end-to-end multi-hop radio link to a Ground Control Station (GCS) outside the area, and it manages battery endurance by relieving UAVs on schedule.
 
-> **Team:** [ team name ] · **Team ID:** [ … ] · **Demo video:** [ link ]
+> **Team:** Useless Engineers · **Team ID:** TM-B02FB9B1E5CTM-B02FB9B1E5C · **Demo video:** https://drive.google.com/drive/folders/1D6tUhoQQd3vU_SswoGfocFpWMTrXx3PK?usp=sharing
 
 ---
 
