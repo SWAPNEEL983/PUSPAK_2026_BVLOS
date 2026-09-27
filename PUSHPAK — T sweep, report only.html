@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PUSHPAK &mdash; T sweep, report only</title>
+<style>
+  :root {
+    --bg: #14160f; --board-bg: #1a1d13; --panel: #1c1f17; --panel-2: #20241a;
+    --border: #363a2b; --border-strong: #4a4f3a; --grid-line: rgba(200,205,160,0.08);
+    --text: #ece7d8; --text-dim: #a7a190; --text-faint: #6f6a5c; --accent: #c9a227;
+    --ok: #7bab5e; --bad: #e0654a;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #14160f; } }
+  :root[data-theme="dark"] { --bg: #14160f; }
+  * { box-sizing: border-box; }
+  :root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font-sans); }
+  .app { max-width: 1240px; margin: 0 auto; padding: 24px 18px 40px; }
+  h1 { font-size: 21px; font-weight: 600; margin: 0 0 6px; }
+  header p { margin: 0 0 8px; font-size: 13.5px; line-height: 1.6; color: var(--text-dim); max-width: 95ch; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 16px; margin-top: 12px; }
+  @media (max-width: 880px) { main { grid-template-columns: 1fr; } }
+  .board-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px; min-width: 0; }
+  canvas { width: 100%; aspect-ratio: 28 / 25; display: block; border-radius: 6px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 14px; height: fit-content; }
+  .label-sm { font-size: 12px; color: var(--text-faint); margin: 0 0 6px; }
+  .btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  button { background: var(--panel-2); border: 1px solid var(--border-strong); color: var(--text); padding: 7px 12px; border-radius: 8px; font: inherit; font-size: 13px; cursor: pointer; }
+  button:hover { background: var(--border); }
+  button.primary { background: var(--accent); color: #1a1a12; border-color: var(--accent); font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-dim); }
+  .row input[type="range"] { flex: 1; accent-color: var(--accent); }
+  .row span { font-family: var(--font-mono); font-size: 12px; min-width: 48px; text-align: right; color: var(--text); }
+  .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric { background: var(--panel-2); border-radius: 8px; padding: 8px 10px; }
+  .metric .l { font-size: 10.5px; color: var(--text-faint); }
+  .metric .v { font-family: var(--font-mono); font-size: 16px; color: var(--accent); margin-top: 2px; }
+  .metric .v.bad { color: var(--bad); } .metric .v.ok { color: var(--ok); }
+  .list { max-height: 230px; overflow-y: auto; font-size: 12px; }
+  .list div { display: flex; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+  .list div span:last-child { margin-left: auto; color: var(--text-dim); font-family: var(--font-mono); font-size: 11px; }
+  .log { max-height: 170px; overflow-y: auto; font-family: var(--font-mono); font-size: 11px; line-height: 1.6; color: var(--text-dim); background: var(--panel-2); border-radius: 8px; padding: 8px 10px; }
+  .log b { color: var(--text-faint); font-weight: 400; margin-right: 6px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 11.5px; color: var(--text-dim); }
+  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>PUSHPAK &mdash; T sweep, report only</h1>
+    <p>1000&nbsp;m &times; 1000&nbsp;m area as 25&times;25 cells of 40&nbsp;m; one tick = one cell move at 5&nbsp;m/s = 8&nbsp;s. The operational centre (OPS) is 75&nbsp;m left of the area, level with its middle. Every UAV takes off from OPS, flies the 75&nbsp;m in (2 ticks) through the <b>arrival lane</b> (edge cell above the sentinel) and leaves through the <b>departure lane</b> (edge cell below it). The <b>sentinel</b> holds the middle cell of the left edge, 95&nbsp;m from OPS, the only cell within the 100&nbsp;m radio range, so every report passes through it.</p>
+    <p>A line of 12 drones (rows 1, 3, &hellip;, 23; 80&nbsp;m apart) sweeps right and back; a trunk of 11 relays along the middle row links it to the sentinel. 10 POIs appear at random places within the first 10&nbsp;minutes and must be reported within 10&nbsp;s. Max flight time 20&nbsp;min: each post's drone is relieved by a fresh drone launched early enough to take over before it must fly home. Drones never fly again after landing. Only drones linked to OPS act as sensors (reliefs in transit and drones flying home don't search). The swarm is recalled once all 10 POIs are reported, or at the latest time that still lets everyone land by 45:00.</p>
+  </header>
+  <main>
+    <div class="board-wrap"><canvas id="board" role="img" aria-label="Arena with the operational centre on the left and the T-shaped sweep formation"></canvas></div>
+    <div class="panel">
+      <div>
+        <p class="label-sm">Controls</p>
+        <div class="btn-row">
+          <button id="btnStart" class="primary">Start</button>
+          <button id="btnStep">Step</button>
+          <button id="btnReset">New layout</button>
+        </div>
+      </div>
+      <div class="row"><label for="speed">Speed</label><input type="range" id="speed" min="20" max="400" step="10" value="120"><span id="speedVal">120 ms</span></div>
+      <label class="row"><input type="checkbox" id="showZones" checked> Show sensor footprints</label>
+      <div class="metrics">
+        <div class="metric"><div class="l">Mission clock</div><div class="v" id="mClock">0:00</div></div>
+        <div class="metric"><div class="l">POIs appeared / found</div><div class="v" id="mPoi">0 / 0</div></div>
+        <div class="metric"><div class="l">Reported &le; 10 s</div><div class="v" id="mRep">0 / 0</div></div>
+        <div class="metric"><div class="l">Avg appear &rarr; report</div><div class="v" id="mDelay">-</div></div>
+        <div class="metric"><div class="l">Drones used (launched)</div><div class="v" id="mUsed">0</div></div>
+        <div class="metric"><div class="l">In the air</div><div class="v" id="mAir">0</div></div>
+        <div class="metric"><div class="l">Longest flight</div><div class="v" id="mLong">-</div></div>
+        <div class="metric"><div class="l">Rule breaks</div><div class="v ok" id="mViol">0</div></div>
+      </div>
+      <div><p class="label-sm">Drones in the air</p><div class="list" id="list"></div></div>
+      <div><p class="label-sm">Event log</p><div class="log" id="log"></div></div>
+      <div class="legend">
+        <span><i style="background:#c8ccd6"></i>sentinel / trunk</span>
+        <span><i style="background:#6fa8d6"></i>sweep line</span>
+        <span><i style="background:transparent;border:2px solid #c9a227"></i>relief en route</span>
+        <span><i style="background:#6f6a5c"></i>returning</span>
+        <span><i style="background:#c9a227;border-radius:1px"></i>POI</span>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------------- constants ----------------
+  var GRID = 25, CELL_M = 40, TICK_S = 8, R = 100 / CELL_M;          // radio range 2.5 cells
+  var OPS = { r: 12, c: -75 / CELL_M - 0.5 };                          // operational centre, cell units (col -2.375)
+  var SENTINEL = { r: 12, c: 0 }, ARR = { r: 11, c: 0 }, DEP = { r: 13, c: 0 };
+  var LINE_ROWS = []; for (var lr = 1; lr < GRID; lr += 2) LINE_ROWS.push(lr);      // 12 rows: 1..23
+  var TRUNK_COLS = []; for (var tc = 2; tc <= GRID - 3; tc += 2) TRUNK_COLS.push(tc); // 11 cols: 2..22
+  var TRUNK_ROW = 12;
+  var ENDURANCE = 150;            // 20 min / 8 s
+  var TRANSIT = 2;                // 75 m at 5 m/s = 15 s
+  var END_TICK = 337;             // everyone landed by 45:00 (337.5 ticks)
+  var POI_WINDOW = 75;            // POIs appear within the first 10 min
+  var N_POI = 10, POI_GAP = 2;    // POIs more than 2 cells apart (as in earlier versions)
+  var MARGIN = 4;                 // safety margin (ticks) on every battery decision
+  var MAX_TICKS = 400;
+
+  // ---------------- state ----------------
+  var drones, pois, t, sweep, posts, queue, recalled, recallTick, logs, running, timer, doneTick, rng;
+
+  // ---------------- helpers ----------------
+  function cheb(a, b){ return Math.max(Math.abs(a.r - b.r), Math.abs(a.c - b.c)); }
+  function dist(a, b){ var dr = a.r - b.r, dc = a.c - b.c; return Math.sqrt(dr * dr + dc * dc); }
+  function key(p){ return p.r + "," + p.c; }
+  function inGrid(d){ return d.state === "active" || d.state === "exiting"; }
+  function mmss(ticks){ var s = Math.round(ticks * TICK_S); return Math.floor(s / 60) + ":" + ("0" + (s % 60)).slice(-2); }
+  function log(msg){ logs.push({ t: t, m: msg }); if (logs.length > 80) logs.shift(); }
+
+  // 8-neighbour BFS; goal always enterable; returns the first step (or the start)
+  function nextStep(from, goal, blocked){
+    if (from.r === goal.r && from.c === goal.c) return from;
+    var prev = {}, q = [from], sk = key(from), gk = key(goal);
+    prev[sk] = null;
+    while (q.length) {
+      var u = q.shift(), uk = key(u);
+      if (uk === gk) break;
+      for (var dr = -1; dr <= 1; dr++) for (var dc = -1; dc <= 1; dc++) {
+        if (!dr && !dc) continue;
+        var v = { r: u.r + dr, c: u.c + dc }, vk = key(v);
+        if (v.r < 0 || v.r >= GRID || v.c < 0 || v.c >= GRID || vk in prev) continue;
+        if (vk !== gk && blocked.has(vk)) continue;
+        prev[vk] = uk; q.push(v);
+      }
+    }
+    if (!(gk in prev)) return from;
+    var cur = gk;
+    while (prev[cur] !== sk) cur = prev[cur];
+    var p = cur.split(",");
+    return { r: +p[0], c: +p[1] };
+  }
+
+  // set of drone ids linked to OPS (any drone within 2.5 cells of OPS starts a chain)
+  function reachSet(pos){
+    var ids = drones.filter(function(d){ return pos[d.id]; }).map(function(d){ return d.id; });
+    var seen = new Set(), q = [];
+    ids.forEach(function(i){ if (dist(pos[i], OPS) <= R) { seen.add(i); q.push(i); } });
+    while (q.length) {
+      var u = q.shift();
+      ids.forEach(function(v){ if (!seen.has(v) && dist(pos[u], pos[v]) <= R) { seen.add(v); q.push(v); } });
+    }
+    return seen;
+  }
+  function positions(){ var p = {}; drones.forEach(function(d){ if (inGrid(d)) p[d.id] = d.pos; }); return p; }
+
+  // ---------------- setup ----------------
+  function newDrone(role, post){
+    var d = { id: drones.length, role: role, post: post, state: "ground", pos: null, takeoff: null, land: null,
+              onDuty: false, relieves: null, relievedBy: null };
+    drones.push(d);
+    return d;
+  }
+
+  function placePois(){
+    var list = [], tries = 0;
+    while (list.length < N_POI && tries++ < 50000) {
+      var p = { r: Math.floor(rng() * GRID), c: Math.floor(rng() * GRID) };
+      if (cheb(p, SENTINEL) <= 1) continue;                               // not on the entrance cells
+      if (list.some(function(q){ return cheb(p, q) <= POI_GAP; })) continue;
+      p.appear = Math.floor(rng() * (POI_WINDOW + 1));
+      p.finder = null; p.found = null; p.reported = null;
+      list.push(p);
+    }
+    return list;
+  }
+
+  function reset(){
+    stop();
+    rng = Math.random;
+    drones = []; t = 0; logs = []; recalled = false; recallTick = null; doneTick = null;
+    pois = placePois();
+    sweep = { col: 1, dir: 1, started: false, trunkDone: false };
+    posts = {};                                   // post key -> id of the drone on duty
+    queue = [];
+    var s = newDrone("sentinel", "S"); posts.S = s.id; queue.push(s.id); s.onDuty = true;
+    // line from the centre outward, so each new drone flies along drones already in place
+    var order = LINE_ROWS.map(function(r, k){ return k; }).sort(function(a, b){ return Math.abs(LINE_ROWS[a] - 12) - Math.abs(LINE_ROWS[b] - 12); });
+    order.forEach(function(k){ var d = newDrone("line", "L" + k); posts["L" + k] = d.id; d.onDuty = true; queue.push(d.id); });
+    // trunk relays launch once the line starts moving (see tick)
+    TRUNK_COLS.forEach(function(c, j){ var d = newDrone("trunk", "T" + j); posts["T" + j] = d.id; d.onDuty = true; });
+    log("New layout: 10 POIs will appear within the first 10 min.");
+    draw(); status();
+  }
+
+  // ---------------- goals ----------------
+  function postIndex(post){ return +post.slice(1); }
+
+  // where each line drone should be: its row at the line's column, or the nearest free
+  // cell in that column if a non-line drone sits there (never two drones on one cell)
+  function lineSlots(col, occ){
+    var taken = new Set(), out = {};
+    LINE_ROWS.forEach(function(row, k){
+      var offs = [0, 1, -1, 2, -2], pick = null;
+      for (var i = 0; i < offs.length && !pick; i++) {
+        var rr = row + offs[i], kk = rr + "," + col;
+        if (rr < 0 || rr >= GRID || occ.has(kk) || taken.has(kk)) continue;
+        pick = { r: rr, c: col };
+      }
+      if (!pick) pick = { r: row, c: col };
+      taken.add(key(pick));
+      out["L" + k] = pick;
+    });
+    return out;
+  }
+
+  function trunkGoal(j){
+    var col = TRUNK_COLS[j];
+    if (sweep.trunkDone || col <= sweep.col - 1) return { r: TRUNK_ROW, c: col };
+    // trail in single file along the middle row behind the line, next-to-drop closest
+    var trailing = TRUNK_COLS.map(function(c, i){ return i; }).filter(function(i){ return TRUNK_COLS[i] > sweep.col - 1; });
+    var placed = new Set(TRUNK_COLS.filter(function(c){ return c <= sweep.col - 1; }));
+    var k = trailing.indexOf(j), cols = [];
+    for (var cc = sweep.col - 1; cc >= 1 && cols.length <= k; cc--) if (!placed.has(cc)) cols.push(cc);
+    return { r: TRUNK_ROW, c: k < cols.length ? cols[k] : Math.max(1, sweep.col - 1) };
+  }
+
+  function exitLane(p){ return recalled ? (cheb(p, ARR) < cheb(p, DEP) ? ARR : DEP) : DEP; }
+
+  function goalOf(d, slots){
+    if (d.state === "exiting") return exitLane(d.pos);
+    if (!d.onDuty) {                                   // relief en route: fly to the drone it replaces
+      var h = drones[posts[d.post]];
+      return (h && h.pos) ? h.pos : d.pos;
+    }
+    if (d.role === "sentinel") return SENTINEL;
+    if (d.role === "trunk") return trunkGoal(postIndex(d.post));
+    return slots[d.post];
+  }
+
+  // ---------------- battery & relief ----------------
+  // time to get home: distance to the exit lane, the queue of drones already heading
+  // out (the lane lets one out per tick), a little for detours, then the 75 m flight
+  function returnTicks(p){
+    var outbound = drones.filter(function(d){ return d.state === "exiting"; }).length;
+    return cheb(p, recalled ? ARR : DEP) + 1 + outbound + 3 + TRANSIT;
+  }
+  function flightLeft(d){ return ENDURANCE - (t - d.takeoff); }
+  function airborne(){ return drones.filter(function(d){ return d.state === "inbound" || inGrid(d); }); }
+  // ticks needed to bring everyone home from where they are now
+  function recallNeed(){
+    var g = drones.filter(inGrid), maxRet = 0;
+    g.forEach(function(d){ maxRet = Math.max(maxRet, cheb(d.pos, SENTINEL) + 1 + TRANSIT); });
+    return maxRet + Math.ceil(airborne().length / 2) + MARGIN;
+  }
+
+  function handOver(h, r){                           // relief r takes over post from h
+    posts[r.post] = r.id;
+    r.onDuty = true; r.relieves = null;
+    h.onDuty = false; h.state = "exiting";
+    log((h.role === "sentinel" ? "Sentinel" : h.post) + ": drone " + (h.id + 1) + " relieved by drone " + (r.id + 1) + ", flying home.");
+  }
+
+  // Departure schedule. The departure lane lets one drone out per tick, so every
+  // drone that must be relieved gets its own lane slot, planned backwards from its
+  // battery deadline (latest deadline gets the latest slot). Drones whose deadlines
+  // clash leave a little earlier instead of all queueing at the lane together.
+  var SAFE = 3;                                      // ticks of spare battery on landing
+  // path home + detours around two-way traffic near the entrance + the exit tick.
+  // Measured worst case in full-length runs: ~1.7x the straight-line cell count.
+  function travelHome(p){ return Math.ceil(cheb(p, DEP) * 1.8) + 4; }
+  function planDepartures(latestRecall){
+    var busy = new Set(), plan = {};
+    drones.forEach(function(d){                      // lane slots already taken by drones heading out
+      if (d.state !== "exiting" || !d.pos) return;
+      var eta = t + cheb(d.pos, DEP) + 1;
+      while (busy.has(eta)) eta++;
+      busy.add(eta);
+    });
+    var hs = [];
+    Object.keys(posts).forEach(function(post){
+      var h = drones[posts[post]];
+      if (!h || h.state !== "active" || !h.onDuty) return;
+      var deadline = h.takeoff + ENDURANCE - TRANSIT - SAFE;        // must reach the lane by then
+      if (deadline - travelHome(h.pos) >= latestRecall) return;     // can stay until the recall
+      hs.push({ h: h, deadline: deadline });
+    });
+    hs.sort(function(a, b){ return b.deadline - a.deadline; });
+    hs.forEach(function(x){
+      var lt = x.deadline;
+      while (busy.has(lt)) lt--;
+      busy.add(lt);
+      plan[x.h.id] = lt - travelHome(x.h.pos);                        // tick to start home
+    });
+    return plan;
+  }
+
+  function batteryAndRelief(){
+    var latestRecall = END_TICK - recallNeed();
+    var plan = planDepartures(latestRecall);
+    Object.keys(posts).forEach(function(post){
+      var h = drones[posts[post]];
+      if (!h || !inGrid(h) || h.state === "exiting") return;
+      var r = (h.relievedBy !== null) ? drones[h.relievedBy] : null;
+      if (r && r.pos && inGrid(r) && cheb(r.pos, h.pos) <= 1) { handOver(h, r); return; }
+      var leaveAt = plan[h.id];
+      var needsRelief = leaveAt !== undefined;
+      var left = flightLeft(h);
+      var mustGo = (needsRelief && t >= leaveAt) || left <= returnTicks(h.pos) + MARGIN;   // plan, or safety net
+      if (mustGo) {
+        if (!r && needsRelief) r = launchRelief(h, t);
+        if (r) { posts[post] = r.id; r.onDuty = true; }
+        h.onDuty = false; h.state = "exiting";
+        log(post + ": drone " + (h.id + 1) + " leaving on schedule" + (r ? " (drone " + (r.id + 1) + " takes over)." : "."));
+        return;
+      }
+      // launch the relief so it arrives just before the scheduled departure
+      if (!r && needsRelief) {
+        var arrive = TRANSIT + queue.length + Math.ceil(cheb(ARR, h.pos) * 1.25) + 4;
+        if (t >= leaveAt - arrive) launchRelief(h, leaveAt);
+      }
+    });
+  }
+
+  // reliefs queue in order of urgency (the tick their post needs them by)
+  function launchRelief(h, needBy){
+    var r = newDrone(h.role, h.post);
+    r.relieves = h.id; h.relievedBy = r.id; r.needBy = needBy;
+    var i = 0;
+    while (i < queue.length && drones[queue[i]].needBy !== undefined && drones[queue[i]].needBy <= needBy) i++;
+    queue.splice(i, 0, r.id);
+    return r;
+  }
+
+  function doRecall(reason){
+    recalled = true; recallTick = t;
+    queue = [];
+    drones.forEach(function(d){
+      if (d.state === "inbound") { d.state = "landed"; d.land = t + (t - d.takeoff); }   // turn round mid-transit
+      else if (inGrid(d)) { d.state = "exiting"; d.onDuty = false; }
+    });
+    log("Recall at " + mmss(t) + " (" + reason + "): everyone flies home.");
+  }
+
+  // ---------------- one tick ----------------
+  function tick(){
+    if (doneTick !== null) { stop(); return; }
+    t++;
+
+    // take-offs: one per tick; trunk relays join once the line is moving
+    if (!recalled) {
+      if (sweep.started) TRUNK_COLS.forEach(function(c, j){ var d = drones[posts["T" + j]]; if (d && d.state === "ground" && queue.indexOf(d.id) === -1) queue.push(d.id); });
+      var arrivalBusy = drones.some(function(d){ return inGrid(d) && d.pos.r === ARR.r && d.pos.c === ARR.c; });
+      var inboundCount = drones.filter(function(d){ return d.state === "inbound"; }).length;
+      if (queue.length && inboundCount < 2) {
+        var ld = drones[queue.shift()];
+        ld.state = "inbound"; ld.takeoff = t;
+      }
+      // arrival after the 75 m transit
+      drones.forEach(function(d){
+        if (d.state === "inbound" && t - d.takeoff >= TRANSIT && !arrivalBusy) {
+          d.state = "active"; d.pos = { r: ARR.r, c: ARR.c }; arrivalBusy = true;
+        }
+      });
+    }
+
+    if (!recalled) batteryAndRelief();
+
+    // the line advances one column when every line post is manned and in place
+    var occ = new Set();
+    drones.forEach(function(d){ if (inGrid(d) && !(d.onDuty && d.role === "line")) occ.add(key(d.pos)); });
+    var slots = lineSlots(sweep.col, occ);
+    var allFound = pois.every(function(p){ return p.found !== null; });
+    var ready = !recalled && !allFound && LINE_ROWS.every(function(r, k){
+      var d = drones[posts["L" + k]];
+      return d && d.onDuty && inGrid(d) && d.state === "active" && d.pos.r === slots["L" + k].r && d.pos.c === slots["L" + k].c;
+    });
+    if (ready) {
+      if (sweep.dir === 1 && sweep.col >= GRID - 2) { sweep.dir = -1; sweep.trunkDone = true; }
+      else if (sweep.dir === -1 && sweep.col <= 1) sweep.dir = 1;
+      var nc = sweep.col + sweep.dir, ns = lineSlots(nc, occ), test = positions(), clear = true;
+      LINE_ROWS.forEach(function(r, k){
+        var id = posts["L" + k], nx = ns["L" + k];
+        drones.forEach(function(o){ if (o.id !== id && inGrid(o) && o.pos.r === nx.r && o.pos.c === nx.c) clear = false; });
+        test[id] = nx;
+      });
+      var rt = reachSet(test);
+      if (clear && LINE_ROWS.every(function(r, k){ return rt.has(posts["L" + k]); })) { sweep.col = nc; slots = ns; }
+      if (sweep.col > 1) sweep.started = true;
+    }
+
+    // everyone plans one step (BFS around other drones), committed in id order
+    var cur = positions(), reach0 = reachSet(cur), cand = {};
+    drones.forEach(function(d){
+      if (!inGrid(d)) return;
+      var goal = goalOf(d, slots);
+      var blocked = new Set();
+      drones.forEach(function(o){ if (o !== d && inGrid(o)) blocked.add(key(o.pos)); });
+      var step = nextStep(d.pos, goal, blocked);
+      // while the line forms, a linked line drone never steps out of range
+      if (!sweep.started && d.role === "line" && d.onDuty && reach0.has(d.id) && (step.r !== d.pos.r || step.c !== d.pos.c)) {
+        var linked = function(p){ var ok = false; reach0.forEach(function(j){ if (j !== d.id && cur[j] && dist(p, cur[j]) <= R) ok = true; }); return ok; };
+        if (!linked(step)) {
+          var need = cheb(d.pos, goal) - 1, alt = null;
+          for (var dr = -1; dr <= 1 && !alt; dr++) for (var dc = -1; dc <= 1 && !alt; dc++) {
+            var p = { r: d.pos.r + dr, c: d.pos.c + dc };
+            if ((!dr && !dc) || p.r < 0 || p.r >= GRID || p.c < 0 || p.c >= GRID || blocked.has(key(p))) continue;
+            if (cheb(p, goal) === need && linked(p)) alt = p;
+          }
+          step = alt || d.pos;
+        }
+      }
+      cand[d.id] = step;
+    });
+    var committed = positions();
+    drones.forEach(function(d){
+      if (!cand[d.id]) return;
+      var c = cand[d.id], clash = false;
+      for (var id in committed) if (+id !== d.id && committed[id].r === c.r && committed[id].c === c.c) { clash = true; break; }
+      if (!clash) committed[d.id] = c;
+    });
+    drones.forEach(function(d){ if (inGrid(d)) d.pos = committed[d.id]; });
+
+    // leaving: a drone on its exit lane flies the 75 m home and lands
+    drones.forEach(function(d){
+      if (d.state === "exiting" && d.pos.r === exitLane(d.pos).r && d.pos.c === exitLane(d.pos).c) {
+        d.state = "landed"; d.land = t + TRANSIT; d.pos = null;
+      }
+    });
+
+    // detection and reporting
+    var reach = reachSet(positions());
+    pois.forEach(function(p){
+      if (p.found !== null && p.reported === null && reach.has(p.finder)) p.reported = t;
+    });
+    // Sensing duty: only drones linked to OPS search. A relief in transit or a drone
+    // flying home isn't tasked with searching and couldn't report within 10 s anyway;
+    // the sweep line (always linked) picks up anything they fly past.
+    drones.forEach(function(d){
+      if (!inGrid(d) || !reach.has(d.id)) return;
+      pois.forEach(function(p, i){
+        if (p.found !== null || p.appear > t || cheb(p, d.pos) > 1) return;
+        p.finder = d.id; p.found = t; p.reported = reach.has(d.id) ? t : null;
+        log("POI " + (i + 1) + " found by drone " + (d.id + 1) + (p.reported !== null ? " and reported." : " (out of range; report pending)."));
+      });
+    });
+
+    // recall: objective met, or the last moment everyone can still land by 45:00
+    if (!recalled) {
+      if (pois.every(function(p){ return p.reported !== null; })) doRecall("all 10 POIs reported");
+      else if (END_TICK - t <= recallNeed()) doRecall("time");
+    }
+
+    if (recalled && drones.every(function(d){ return d.state === "landed" || d.state === "ground"; })) {
+      doneTick = drones.reduce(function(m, d){ return d.land !== null ? Math.max(m, d.land) : m; }, 0);
+      log("Mission complete: last drone landed at " + mmss(doneTick) + ".");
+      stop();
+    }
+    if (t >= MAX_TICKS) stop();
+    draw(); status();
+  }
+
+  // ---------------- results ----------------
+  function results(){
+    var used = drones.filter(function(d){ return d.takeoff !== null; });
+    var viol = { over20: 0, late: 0, lateReport: 0 };
+    var longest = 0;
+    used.forEach(function(d){
+      var end = d.land !== null ? d.land : t;
+      longest = Math.max(longest, end - d.takeoff);
+      if (end - d.takeoff > ENDURANCE) viol.over20++;
+      if (d.land !== null && d.land > END_TICK) viol.late++;
+    });
+    var found = pois.filter(function(p){ return p.found !== null; });
+    found.forEach(function(p){ if (p.reported === null || (p.reported - p.found) * TICK_S > 10) viol.lateReport++; });
+    var rep = pois.filter(function(p){ return p.reported !== null; });
+    return {
+      t: t, done: doneTick !== null, doneTick: doneTick, recallTick: recallTick,
+      appeared: pois.filter(function(p){ return p.appear <= t; }).length, found: found.length,
+      reportedOnTime: found.length - viol.lateReport,
+      delays: rep.map(function(p){ return p.reported - p.appear; }),
+      used: used.length, longest: longest, viol: viol,
+      air: airborne().length
+    };
+  }
+
+  // ---------------- drawing ----------------
+  var canvas = document.getElementById("board"), ctx = canvas.getContext("2d"), dpr = 1;
+  function setupCanvas(){
+    var w = canvas.clientWidth, h = canvas.clientHeight || w * 25 / 28;
+    dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    draw();
+  }
+  function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+  function draw(){
+    if (!drones) return;
+    var W = canvas.width / dpr, H = canvas.height / dpr, cell = H / GRID, ox = W - H;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    function X(c){ return ox + (c + 0.5) * cell; } function Y(r){ return (r + 0.5) * cell; }
+    // arena
+    ctx.fillStyle = css("--board-bg"); ctx.fillRect(ox, 0, H, H);
+    ctx.strokeStyle = css("--grid-line"); ctx.lineWidth = 1;
+    for (var i = 0; i <= GRID; i++) {
+      var p = Math.round(i * cell) + 0.5;
+      ctx.beginPath(); ctx.moveTo(ox + p, 0); ctx.lineTo(ox + p, H); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(ox, p); ctx.lineTo(ox + H, p); ctx.stroke();
+    }
+    // OPS and its link
+    var gx = X(OPS.c), gy = Y(OPS.r);
+    ctx.strokeStyle = css("--accent"); ctx.lineWidth = 1.2;
+    if (ctx.setLineDash) ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(X(0), gy); ctx.stroke();
+    if (ctx.setLineDash) ctx.setLineDash([]);
+    ctx.fillStyle = css("--panel-2"); ctx.fillRect(gx - cell * 0.85, gy - cell * 0.85, cell * 1.7, cell * 1.7);
+    ctx.strokeRect(gx - cell * 0.85, gy - cell * 0.85, cell * 1.7, cell * 1.7);
+    ctx.fillStyle = css("--text-dim"); ctx.font = "600 " + Math.max(8, Math.round(cell * 0.42)) + "px sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("OPS", gx, gy);
+    // lanes
+    [[ARR, "in"], [DEP, "out"]].forEach(function(l){
+      ctx.strokeStyle = css("--accent"); ctx.strokeRect(ox + l[0].c * cell + 1, l[0].r * cell + 1, cell - 2, cell - 2);
+      ctx.fillStyle = css("--text-faint"); ctx.font = Math.max(7, Math.round(cell * 0.3)) + "px sans-serif";
+      ctx.fillText(l[1], ox - cell * 0.35, Y(l[0].r));
+    });
+    // sensor footprints
+    var act = drones.filter(inGrid);
+    if (document.getElementById("showZones").checked) {
+      act.forEach(function(d){
+        if (d.state === "exiting") return;
+        ctx.fillStyle = d.role === "line" ? "rgba(111,168,214,0.10)" : "rgba(200,204,214,0.07)";
+        ctx.fillRect(ox + (d.pos.c - 1) * cell, (d.pos.r - 1) * cell, cell * 3, cell * 3);
+      });
+    }
+    // radio links
+    var reach = reachSet(positions());
+    ctx.lineWidth = 1;
+    for (var a = 0; a < act.length; a++) for (var b = a + 1; b < act.length; b++) {
+      if (dist(act[a].pos, act[b].pos) <= R) {
+        ctx.strokeStyle = (reach.has(act[a].id) && reach.has(act[b].id)) ? "rgba(200,204,214,0.35)" : "rgba(224,101,74,0.4)";
+        ctx.beginPath(); ctx.moveTo(X(act[a].pos.c), Y(act[a].pos.r)); ctx.lineTo(X(act[b].pos.c), Y(act[b].pos.r)); ctx.stroke();
+      }
+    }
+    act.forEach(function(d){ if (dist(d.pos, OPS) <= R) { ctx.strokeStyle = "rgba(200,204,214,0.6)"; ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(X(d.pos.c), Y(d.pos.r)); ctx.stroke(); } });
+    // POIs
+    pois.forEach(function(p){
+      if (p.appear > t) return;
+      var cx = X(p.c), cy = Y(p.r), rr = cell * 0.3;
+      ctx.beginPath(); ctx.moveTo(cx, cy - rr); ctx.lineTo(cx + rr, cy); ctx.lineTo(cx, cy + rr); ctx.lineTo(cx - rr, cy); ctx.closePath();
+      if (p.found !== null) { ctx.fillStyle = css("--accent"); ctx.fill(); }
+      else { ctx.strokeStyle = css("--accent"); ctx.lineWidth = 1.5; ctx.stroke(); }
+    });
+    // drones
+    act.forEach(function(d){
+      var cx = X(d.pos.c), cy = Y(d.pos.r), rr = cell * 0.3;
+      ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2);
+      if (d.state === "exiting") { ctx.fillStyle = "#6f6a5c"; ctx.fill(); }
+      else if (!d.onDuty) { ctx.strokeStyle = css("--accent"); ctx.lineWidth = 2; ctx.stroke(); }
+      else { ctx.fillStyle = d.role === "line" ? "#6fa8d6" : "#c8ccd6"; ctx.fill(); }
+      if (rr > 6) {
+        ctx.fillStyle = (d.onDuty || d.state === "exiting") ? "#14160f" : css("--accent");
+        ctx.font = "600 " + Math.round(rr * 0.85) + "px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(String(d.id + 1), cx, cy + 0.5);
+      }
+    });
+  }
+
+  // ---------------- UI ----------------
+  function set(id, v, cls){ var e = document.getElementById(id); e.textContent = v; if (cls !== undefined) e.className = "v " + cls; }
+  function status(){
+    var r = results();
+    set("mClock", mmss(t) + " / 45:00");
+    set("mPoi", r.appeared + " / " + r.found);
+    set("mRep", r.reportedOnTime + " / " + r.found);
+    set("mDelay", r.delays.length ? (r.delays.reduce(function(a, b){ return a + b; }, 0) / r.delays.length * TICK_S / 60).toFixed(1) + " min" : "-");
+    set("mUsed", String(r.used));
+    set("mAir", String(r.air));
+    set("mLong", r.used ? mmss(r.longest) : "-");
+    var v = r.viol.over20 + r.viol.late + r.viol.lateReport;
+    set("mViol", String(v), v ? "bad" : "ok");
+    var list = document.getElementById("list"); list.innerHTML = "";
+    drones.filter(function(d){ return d.state === "inbound" || inGrid(d); }).forEach(function(d){
+      var row = document.createElement("div");
+      var a = document.createElement("span"); a.textContent = "Drone " + (d.id + 1);
+      var what = d.role === "sentinel" ? "sentinel" : d.role === "line" ? "line row " + LINE_ROWS[postIndex(d.post)] : "trunk col " + TRUNK_COLS[postIndex(d.post)];
+      var b = document.createElement("span");
+      b.textContent = (d.state === "inbound" ? "flying in \u2192 " + what : d.state === "exiting" ? "flying home" : (d.onDuty ? what : "relief \u2192 " + what)) + " \u00b7 " + mmss(t - d.takeoff);
+      row.appendChild(a); row.appendChild(b); list.appendChild(row);
+    });
+    var lg = document.getElementById("log"); lg.innerHTML = "";
+    logs.forEach(function(l){ var e = document.createElement("div"); var b2 = document.createElement("b"); b2.textContent = mmss(l.t); e.appendChild(b2); e.appendChild(document.createTextNode(l.m)); lg.appendChild(e); });
+    lg.scrollTop = lg.scrollHeight;
+  }
+
+  function start(){ if (running || doneTick !== null) return; running = true; document.getElementById("btnStart").textContent = "Pause"; timer = setInterval(tick, +document.getElementById("speed").value); }
+  function stop(){ running = false; var b = document.getElementById("btnStart"); if (b) b.textContent = "Start"; if (timer) clearInterval(timer); timer = null; }
+
+  document.getElementById("btnStart").addEventListener("click", function(){ if (running) stop(); else start(); });
+  document.getElementById("btnStep").addEventListener("click", function(){ stop(); tick(); });
+  document.getElementById("btnReset").addEventListener("click", reset);
+  document.getElementById("speed").addEventListener("input", function(){
+    document.getElementById("speedVal").textContent = this.value + " ms";
+    if (running) { stop(); start(); }
+  });
+  document.getElementById("showZones").addEventListener("change", draw);
+  window.addEventListener("resize", function(){ setupCanvas(); });
+
+  // test hook (harmless in the browser)
+  window.__PUSHPAK = { reset: reset, tick: tick, results: results, done: function(){ return doneTick !== null || t >= MAX_TICKS; },
+                       setRng: function(f){ rng = f; }, state: function(){ return { drones: drones, pois: pois, sweep: sweep, posts: posts, t: t }; } };
+
+  reset();
+  requestAnimationFrame(setupCanvas);
+})();
+</script>
+</body>
+</html>
