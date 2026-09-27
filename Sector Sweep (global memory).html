@@ -1,0 +1,2565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sector Sweep</title>
+<style>
+  :root {
+    --bg: #14160f;
+    --board-bg: #1a1d13;
+    --panel: #1c1f17;
+    --panel-2: #20241a;
+    --border: #363a2b;
+    --border-strong: #4a4f3a;
+    --grid-line: rgba(200,205,160,0.08);
+    --text: #ece7d8;
+    --text-dim: #a7a190;
+    --text-faint: #6f6a5c;
+    --accent: #c9a227;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14160f; --board-bg: #1a1d13; --panel: #1c1f17; --panel-2: #20241a;
+      --border: #363a2b; --border-strong: #4a4f3a; --grid-line: rgba(200,205,160,0.08);
+      --text: #ece7d8; --text-dim: #a7a190; --text-faint: #6f6a5c; --accent: #c9a227;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14160f; --board-bg: #1a1d13; --panel: #1c1f17; --panel-2: #20241a;
+    --border: #363a2b; --border-strong: #4a4f3a; --grid-line: rgba(200,205,160,0.08);
+    --text: #ece7d8; --text-dim: #a7a190; --text-faint: #6f6a5c; --accent: #c9a227;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .app { max-width: 1180px; margin: 0 auto; padding: 28px 20px 40px; }
+  header { margin-bottom: 20px; }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 6px; letter-spacing: -0.01em; }
+  header p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--text-dim); max-width: 62ch; }
+  main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 18px;
+  }
+  @media (max-width: 860px) {
+    main { grid-template-columns: 1fr; }
+  }
+  .board-wrap {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px;
+    min-width: 0;
+  }
+  canvas {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    display: block;
+    border-radius: 6px;
+    background: var(--board-bg);
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    height: fit-content;
+  }
+  .section-label {
+    font-size: 12px;
+    color: var(--text-faint);
+    margin: 0 0 8px;
+  }
+  .btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  button {
+    background: var(--panel-2);
+    border: 1px solid var(--border-strong);
+    color: var(--text);
+    padding: 8px 13px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background .15s ease;
+  }
+  button:hover { background: var(--border); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary { background: var(--accent); color: #1a1a12; border-color: var(--accent); font-weight: 600; }
+  button.primary:hover { filter: brightness(1.08); }
+  .slider-row { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-dim); }
+  .slider-row input[type="range"] { flex: 1; accent-color: var(--accent); }
+  .slider-row span { font-family: var(--font-mono); font-size: 12px; min-width: 44px; text-align: right; color: var(--text); }
+  .check-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); cursor: pointer; }
+  .check-row input { accent-color: var(--accent); }
+  .metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .metric { background: var(--panel-2); border-radius: 8px; padding: 10px 8px; }
+  .metric .label { font-size: 10.5px; color: var(--text-faint); }
+  .metric .value { font-family: var(--font-mono); font-size: 18px; color: var(--accent); margin-top: 2px; }
+  .drone-list { display: flex; flex-direction: column; max-height: 320px; overflow-y: auto; }
+  .drone-row {
+    display: flex; align-items: center; gap: 8px; font-size: 12.5px;
+    padding: 6px 0; border-bottom: 1px solid var(--border);
+  }
+  .drone-row:last-child { border-bottom: none; }
+  .swatch { width: 11px; height: 11px; border-radius: 3px; flex-shrink: 0; }
+  .drone-row .name { color: var(--text); white-space: nowrap; }
+  .drone-row .state { margin-left: auto; color: var(--text-dim); font-family: var(--font-mono); font-size: 11px; text-align: right; }
+  .log-box {
+    max-height: 150px;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    line-height: 1.7;
+    color: var(--text-dim);
+    background: var(--panel-2);
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+  .log-box div span { color: var(--text-faint); margin-right: 6px; }
+  .legend-key { display: flex; flex-wrap: wrap; gap: 10px 16px; font-size: 12px; color: var(--text-dim); }
+  .legend-key .item { display: flex; align-items: center; gap: 6px; }
+  .legend-key .dot { width: 9px; height: 9px; border-radius: 50%; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Sector sweep</h1>
+    <p><b>T sweep + hold POIs (MST network):</b> the T sweeps back and forth. When a line drone finds a POI it reports it and stays on it; one of two reserve drones trailing the line takes its slot, and a new reserve is sent in. Each holder is linked to the nearest node of the permanent network (sentinel, trunk, other holders and their relays) with relays at most 100 m apart, so the network grows like a minimum spanning tree. The mission ends when every POI is reported, held, and linked.</p>
+    <p><b>POIs appear over time:</b> the 10 POIs appear at random times within the window set by the slider (0 = all present from the start) and stay once they appear. A seen cell can now gain a POI later, so the adaptive search keeps re-checking the stalest ground once everything has been seen, and the sweep line keeps going back and forth until all 10 are reported.</p>
+    <p><b>Strategy A (formation sweep, report only):</b> 12 drones abreast (columns 1, 3, ..., 23; 80 m apart) sweep from top to bottom, linked to the sentinel by a trunk of 10 relays that trail behind the line. Every POI is reported the moment it is seen, nobody stays on it, and the mission ends when all 10 are reported. The explorer count doesn't apply in this mode.</p>
+    <p><b>Global memory:</b> the swarm shares one map of every cell that has ever been seen. Explorers always head for the nearest unseen cell (growing the relay network toward unseen ground when needed) and only re-check old ground once nothing is left unseen; they retarget instantly if another drone covers their cell first.</p>
+    <p>A 25&times;25 open field (625 cells) hides 10 targets, each placed at least 2 squares from every other target. Pick a starting swarm size with the "Drones" slider, then start a new layout. One sentinel drone posts just inside the 3-cell gate at the top-middle; every other drone enters through that gate. All drones share one staleness map: every cell counts the ticks since any drone last saw it, and each explorer heads for the cell with the highest staleness &divide; (distance + 1) that no other explorer has claimed, within a frontier that stays close to the connected network so the swarm expands outward like a growing hull. Every 5 ticks the simulation takes the convex hull of the searchers, builds a minimum spanning tree from the sentinel to those hull drones, and places relays only where an MST edge is longer than 100 m. Existing relays are reassigned to the new slots first; fresh drones are recruited only for a genuine shortfall, and surplus relays are redeployed as explorers (or sent home once everything is found). Relays and explorers are interchangeable: a relay that spots a target breaks off to claim it. A drone may briefly lose its link to the sentinel while exploring, but after 3 ticks cut off it turns back to reconnect, and after 25 it is recalled. A drone caught flip-flopping between two cells is also recalled and the network is recalculated immediately. No two drones ever share a cell. Each drone detects targets in the 1-square area around it. The mission ends once every target is found and settled.</p>
+  </header>
+  <main>
+    <div class="board-wrap">
+      <canvas id="board" role="img" aria-label="Simulation board showing a configurable swarm of search drones on a 25 by 25 grid"></canvas>
+    </div>
+    <div class="panel">
+      <div>
+        <p class="section-label">Swarm setup (applies on New layout)</p>
+        <div class="slider-row">
+          <label for="appearRange">POIs appear within (min)</label>
+          <input type="range" id="appearRange" min="0" max="10" step="1" value="5">
+          <span id="appearVal">5</span>
+        </div>
+        <div class="slider-row">
+          <label for="modeSelect">Strategy</label>
+          <select id="modeSelect" style="flex:1;background:var(--panel-2);color:var(--text);border:1px solid var(--border-strong);border-radius:6px;padding:4px 6px;font:inherit;font-size:12px">
+            <option value="adaptive">Adaptive search (POIs held)</option>
+            <option value="adaptiveReport">Adaptive search (report only)</option>
+            <option value="sweep">A: formation sweep (report only)</option>
+            <option value="sweepHold">T sweep + hold POIs (MST network)</option>
+          </select>
+        </div>
+        <div class="slider-row">
+          <label for="droneRange">Explorers n</label>
+          <input type="range" id="droneRange" min="1" max="40" step="1" value="12">
+          <span id="droneVal">12</span>
+        </div>
+      </div>
+      <div>
+        <p class="section-label">Controls</p>
+        <div class="btn-row">
+          <button id="btnStart" class="primary">Start</button>
+          <button id="btnStep">Step</button>
+          <button id="btnReset">New layout</button>
+        </div>
+      </div>
+      <div class="slider-row">
+        <label for="speedRange">Speed</label>
+        <input type="range" id="speedRange" min="20" max="400" step="10" value="120">
+        <span id="speedVal">120 ms</span>
+      </div>
+      <label class="check-row">
+        <input type="checkbox" id="bufferToggle" checked>
+        Show buffer zones
+      </label>
+      <div class="metrics">
+        <div class="metric">
+          <div class="label">Targets found</div>
+          <div class="value" id="statTargets">0 / 10</div>
+        </div>
+        <div class="metric">
+          <div class="label">Ticks elapsed</div>
+          <div class="value" id="statTicks">0</div>
+        </div>
+        <div class="metric">
+          <div class="label">Support relays</div>
+          <div class="value" id="statSupport">0</div>
+        </div>
+        <div class="metric">
+          <div class="label">Components</div>
+          <div class="value" id="statComponents">1</div>
+        </div>
+        <div class="metric">
+          <div class="label">Reported &le;10 s</div>
+          <div class="value" id="statReports">0 / 0</div>
+        </div>
+        <div class="metric">
+          <div class="label">POIs appeared</div>
+          <div class="value" id="statAppeared">0 / 10</div>
+        </div>
+        <div class="metric">
+          <div class="label">Avg appear&rarr;report</div>
+          <div class="value" id="statDelay">-</div>
+        </div>
+        <div class="metric">
+          <div class="label">Unseen cells</div>
+          <div class="value" id="statUnseen">625</div>
+        </div>
+        <div class="metric">
+          <div class="label">Drones in air</div>
+          <div class="value" id="statAir">0</div>
+        </div>
+      </div>
+      <div>
+        <p class="section-label">Drones</p>
+        <div class="drone-list" id="droneList"></div>
+      </div>
+      <div>
+        <p class="section-label">Event log</p>
+        <div class="log-box" id="logBox"></div>
+      </div>
+      <div class="legend-key">
+        <div class="item"><span class="dot" style="background:var(--accent)"></span>Undetected target</div>
+        <div class="item"><span class="dot" style="background:var(--text-dim)"></span>Claimed / settled target</div>
+        <div class="item"><span class="dot" style="background:#c8ccd6"></span>Sentinel / relay</div>
+        <div class="item"><span class="dot" style="background:#c9a227;border-radius:1px;height:3px"></span>POI tree link</div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var GRID = 25;
+  var MAX_TICKS = 6000;
+  var N_DRONES = 20; // overwritten from the slider each time a new layout is started
+  var N_TARGETS = 10;
+  var DRONE_COLORS = [
+    "#e0654a", "#46b3a4", "#9c86d9", "#6fa8d6", "#7bab5e",
+    "#d97a9c", "#d98a4a", "#7e93a8", "#b06fae", "#5fc9c9",
+    "#c96f6f", "#5fa3c9", "#8fbf6b", "#c98fce", "#6bd0a8",
+    "#d9b56a", "#7a8fd9", "#d96a95", "#6ad9c2", "#a3a15f"
+  ];
+  function droneColor(i){
+    if (i < DRONE_COLORS.length) return DRONE_COLORS[i];
+    // beyond the hand-picked palette, generate more with golden-angle hue spacing
+    var hue = (i * 137.508) % 360;
+    return "hsl(" + hue.toFixed(0) + ", 55%, 60%)";
+  }
+  function droneName(i){ return "Drone " + (i + 1); }
+
+  var canvas = document.getElementById("board");
+  var ctx = canvas.getContext("2d");
+  var btnStart = document.getElementById("btnStart");
+  var btnStep = document.getElementById("btnStep");
+  var btnReset = document.getElementById("btnReset");
+  var speedRange = document.getElementById("speedRange");
+  var speedVal = document.getElementById("speedVal");
+  var droneRange = document.getElementById("droneRange");
+  var droneVal = document.getElementById("droneVal");
+  var modeSelect = document.getElementById("modeSelect");
+  var appearRange = document.getElementById("appearRange");
+  var appearVal = document.getElementById("appearVal");
+  appearRange.addEventListener("input", function(){ appearVal.textContent = appearRange.value; });
+  var bufferToggle = document.getElementById("bufferToggle");
+  var statTargets = document.getElementById("statTargets");
+  var statTicks = document.getElementById("statTicks");
+  var statSupport = document.getElementById("statSupport");
+  var statComponents = document.getElementById("statComponents");
+  var statReports = document.getElementById("statReports");
+  var statAir = document.getElementById("statAir");
+  var statUnseen = document.getElementById("statUnseen");
+  var statAppeared = document.getElementById("statAppeared");
+  var statDelay = document.getElementById("statDelay");
+  var droneListEl = document.getElementById("droneList");
+  var logBox = document.getElementById("logBox");
+
+  var targets, drones, tickCount, running, timer, logs;
+  var globalVisited; // shared memory: every drone (searcher or relay) reads/writes the same visited-tiles set
+  var staleness;     // shared staleness map: ticks since each cell was last inside ANY drone's detection zone
+  var lastComponentCount = 1, lastPointsDiscovered = 0; // refreshed every tick for the UI
+
+  // ---------- Min-heap for Dijkstra ----------
+  function MinHeap(){ this.data = []; }
+  MinHeap.prototype.size = function(){ return this.data.length; };
+  MinHeap.prototype.push = function(item){
+    var d = this.data;
+    d.push(item);
+    var i = d.length - 1;
+    while (i > 0) {
+      var p = (i - 1) >> 1;
+      if (d[p][0] <= d[i][0]) break;
+      var tmp = d[p]; d[p] = d[i]; d[i] = tmp;
+      i = p;
+    }
+  };
+  MinHeap.prototype.pop = function(){
+    var d = this.data;
+    var top = d[0];
+    var last = d.pop();
+    if (d.length > 0) {
+      d[0] = last;
+      var i = 0, n = d.length;
+      while (true) {
+        var l = 2*i+1, r = 2*i+2, smallest = i;
+        if (l < n && d[l][0] < d[smallest][0]) smallest = l;
+        if (r < n && d[r][0] < d[smallest][0]) smallest = r;
+        if (smallest === i) break;
+        var tmp = d[smallest]; d[smallest] = d[i]; d[i] = tmp;
+        i = smallest;
+      }
+    }
+    return top;
+  };
+
+  function neighbors(r, c){
+    var out = [];
+    for (var dr = -1; dr <= 1; dr++) {
+      for (var dc = -1; dc <= 1; dc++) {
+        if (dr === 0 && dc === 0) continue;
+        var nr = r + dr, nc = c + dc;
+        if (nr >= 0 && nr < GRID && nc >= 0 && nc < GRID) out.push([nr, nc]);
+      }
+    }
+    return out;
+  }
+
+  // Dijkstra shortest path on the open grid, avoiding cells in `blocked`
+  // (a Set of "r,c" strings), except the goal cell is always reachable.
+  function dijkstra(start, goal, blocked){
+    var key = function(r, c){ return r * GRID + c; };
+    var n = GRID * GRID;
+    var dist = new Float64Array(n).fill(Infinity);
+    var prev = new Int32Array(n).fill(-1);
+    var visited = new Uint8Array(n);
+    var sk = key(start[0], start[1]);
+    var gk = key(goal[0], goal[1]);
+    dist[sk] = 0;
+    var heap = new MinHeap();
+    heap.push([0, start[0], start[1]]);
+    while (heap.size() > 0) {
+      var top = heap.pop();
+      var d = top[0], r = top[1], c = top[2];
+      var k = key(r, c);
+      if (visited[k]) continue;
+      visited[k] = 1;
+      if (k === gk) break;
+      var nbrs = neighbors(r, c);
+      for (var i = 0; i < nbrs.length; i++) {
+        var nr = nbrs[i][0], nc = nbrs[i][1];
+        var nk = key(nr, nc);
+        if (visited[nk]) continue;
+        var isGoal = (nr === goal[0] && nc === goal[1]);
+        if (!isGoal && blocked.has(nr + "," + nc)) continue;
+        var nd = d + 1;
+        if (nd < dist[nk]) {
+          dist[nk] = nd;
+          prev[nk] = k;
+          heap.push([nd, nr, nc]);
+        }
+      }
+    }
+    if (dist[gk] === Infinity) return null;
+    var path = [];
+    var cur = gk;
+    while (cur !== sk) {
+      var rr = Math.floor(cur / GRID), cc = cur % GRID;
+      path.push([rr, cc]);
+      cur = prev[cur];
+      if (cur === -1) return null;
+    }
+    path.reverse();
+    return path;
+  }
+
+  // ---------- Simulation state ----------
+  var TARGET_MIN_GAP = 2;  // no two points of interest may be within this many squares of each other
+  var GATE_CLEARANCE = 3;  // keep targets this far from the entry gate so a settled drone can never block it
+  var ENTRY_ROW = 0;
+  var ENTRY_COL = Math.floor(GRID / 2); // middle of the top side
+  var DETECTION_RADIUS = 1; // how far a drone can "see" a target (1-square area around it) - unrelated to collision spacing
+  var COLLISION_RADIUS = 0; // minimum mandatory separation is 40 m (one grid cell) center-to-center, which any two
+                             // DIFFERENT cells already satisfy - so the only actual collision is sharing the same cell
+  var entryQueue = [];     // ids of drones waiting to enter, in priority order (recruited support drones jump to the front)
+
+  var SQUARE_SIDE_M = 40;
+  var CONNECT_RADIUS_M = 100;
+  var CONNECT_RADIUS_CELLS = CONNECT_RADIUS_M / SQUARE_SIDE_M; // 2.5 - max Euclidean distance to a nearest neighbor, at all times
+  var SUPPORT_COLOR = "#c8ccd6";
+  // (recruitment cooldown, see the connectivity gate in tick(), replaces a naive streak counter)
+  // the permanent sentinel can't literally sit ON the gate cell - its own collision
+  // buffer would block that cell forever and nobody else could ever enter. It posts
+  // just inside the field instead, far enough that the gate stays clear.
+  var SENTINEL_POST = { r: Math.min(ENTRY_ROW + 2, GRID - 1), c: ENTRY_COL };
+
+  function chebyshev(a, b){ return Math.max(Math.abs(a.r - b.r), Math.abs(a.c - b.c)); }
+  function euclidCells(a, b){ var dr = a.r - b.r, dc = a.c - b.c; return Math.sqrt(dr*dr + dc*dc); }
+  function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+
+  // true if the last 6 recorded positions strictly alternate between exactly
+  // two distinct cells (A,B,A,B,A,B) - a drone stuck flip-flopping rather
+  // than making progress.
+  function isOscillating(history){
+    if (history.length < 6) return false;
+    var recent = history.slice(-6);
+    var a = recent[0], b = recent[1];
+    if (a === b) return false;
+    for (var i = 0; i < recent.length; i++) {
+      if (recent[i] !== ((i % 2 === 0) ? a : b)) return false;
+    }
+    return true;
+  }
+
+  function randomTargets(count){
+    var used = new Set();
+    var list = [];
+    var attempts = 0;
+    var maxAttempts = 20000;
+    while (list.length < count && attempts < maxAttempts) {
+      attempts++;
+      var r = Math.floor(Math.random() * GRID);
+      var c = Math.floor(Math.random() * GRID);
+      var k = r + "," + c;
+      if (used.has(k)) continue;
+      if (GATE_CELLS.some(function(g){ return chebyshev({r:r,c:c}, g) <= GATE_CLEARANCE; })) continue;
+      var tooCloseToOther = false;
+      for (var i = 0; i < list.length; i++) {
+        if (chebyshev({r:r,c:c}, {r:list[i].r,c:list[i].c}) <= TARGET_MIN_GAP) { tooCloseToOther = true; break; }
+      }
+      if (tooCloseToOther) continue;
+      used.add(k);
+      list.push({ r: r, c: c, claimedBy: null });
+    }
+    return list;
+  }
+
+  function initDrones(count){
+    var list = [];
+    for (var i = 0; i < count; i++) {
+      var d = newDroneObj(i, (i === 0) ? "sentinel" : "searcher", (i === 0) ? SUPPORT_COLOR : droneColor(i),
+                          (i === 0) ? { r: SENTINEL_POST.r, c: SENTINEL_POST.c } : null);
+      list.push(d);
+    }
+    return list;
+  }
+
+  // detection footprint: the area a drone can "see" a target in (unrelated to collision spacing)
+  function droneDetectionZone(drone){
+    var cells = new Set();
+    var p = drone.pos;
+    for (var dr = -DETECTION_RADIUS; dr <= DETECTION_RADIUS; dr++) {
+      for (var dc = -DETECTION_RADIUS; dc <= DETECTION_RADIUS; dc++) {
+        var nr = p.r + dr, nc = p.c + dc;
+        if (nr >= 0 && nr < GRID && nc >= 0 && nc < GRID) cells.add(nr + "," + nc);
+      }
+    }
+    return cells;
+  }
+
+  // collision footprint: just the cell the drone is standing on - the mandatory
+  // 40 m (one grid cell) separation is already satisfied by any two different cells
+  function droneCollisionCells(drone){
+    return new Set([drone.pos.r + "," + drone.pos.c]);
+  }
+
+  // let the next queued drone in if the entry square (top-middle) is currently clear
+  // the gate is a short 3-cell segment at the top-middle, not a single cell -
+  // a single door creates a severe bottleneck once a couple of drones are
+  // stationed nearby (nowhere left to step that satisfies both the buffer and
+  // connectivity rules at once). Three doors give enough elbow room to
+  // actually resolve without changing what "enter from the middle of the top
+  // side" means - it's still one small spot at the top-middle, just 3 cells wide.
+  var GATE_CELLS = [
+    { r: ENTRY_ROW, c: ENTRY_COL },
+    { r: ENTRY_ROW, c: clamp(ENTRY_COL - 1, 0, GRID - 1) },
+    { r: ENTRY_ROW, c: clamp(ENTRY_COL + 1, 0, GRID - 1) }
+  ];
+
+  function attemptEntry(){
+    if (entryQueue.length === 0) return;
+    var blocked = new Set();
+    for (var i = 0; i < drones.length; i++) {
+      if (drones[i].state === "waiting" || drones[i].state === "departed") continue;
+      blocked = new Set([...blocked, ...droneCollisionCells(drones[i])]);
+    }
+    var gate = null;
+    for (var g = 0; g < GATE_CELLS.length; g++) {
+      if (!blocked.has(GATE_CELLS[g].r + "," + GATE_CELLS[g].c)) { gate = GATE_CELLS[g]; break; }
+    }
+    if (!gate) return;
+    var drone = drones[entryQueue.shift()];
+    drone.pos = { r: gate.r, c: gate.c };
+    drone.state = (drone.role === "searcher") ? "searching" : "converging"; // sentinel & support head straight for their post/relay spot
+    drone.entryTick = tickCount;
+    globalVisited.add(gate.r + "," + gate.c);
+    logEvent(droneName(drone.id) + (drone.role === "sentinel" ? " entered and is heading to its permanent post by the gate." : drone.role === "support" ? " entered as a support relay." : " entered the field."));
+  }
+
+  // true if two single positions are the same cell (the only real collision, per the 40 m/1-cell math)
+  function tooClose(posA, posB){
+    return chebyshev(posA, posB) <= COLLISION_RADIUS;
+  }
+
+  // snapshot of every ENTERED drone's position; waiting drones get null and are skipped elsewhere
+  function snapshotPositions(){
+    var snap = [];
+    for (var i = 0; i < drones.length; i++) {
+      if (drones[i].state === "waiting" || drones[i].state === "departed") { snap.push(null); continue; }
+      snap.push({ r: drones[i].pos.r, c: drones[i].pos.c });
+    }
+    return snap;
+  }
+
+  // cells blocked by every OTHER drone's position, as of a fixed snapshot
+  function blockedFromSnapshot(snap, excludeId){
+    var blocked = new Set();
+    for (var i = 0; i < snap.length; i++) {
+      if (i === excludeId || snap[i] === null) continue;
+      var p = snap[i];
+      for (var dr = -COLLISION_RADIUS; dr <= COLLISION_RADIUS; dr++) {
+        for (var dc = -COLLISION_RADIUS; dc <= COLLISION_RADIUS; dc++) {
+          var nr = p.r + dr, nc = p.c + dc;
+          if (nr >= 0 && nr < GRID && nc >= 0 && nc < GRID) blocked.add(nr + "," + nc);
+        }
+      }
+    }
+    return blocked;
+  }
+
+  // ---------- Connectivity relay network ----------
+  // set of drone-array indices reachable from the sentinel (id 0) through a
+  // chain of hops, each hop no more than CONNECT_RADIUS_CELLS apart. posArr is
+  // indexed exactly like `drones` (null entries, e.g. "waiting", are skipped).
+  function connectedSetFromPositions(posArr){
+    var visited = new Set();
+    var queue = [];
+    if (posArr[0] !== null && posArr[0] !== undefined) { visited.add(0); queue.push(0); }
+    while (queue.length > 0) {
+      var cur = queue.shift();
+      for (var i = 0; i < posArr.length; i++) {
+        if (visited.has(i) || posArr[i] === null || posArr[i] === undefined) continue;
+        if (euclidCells(posArr[cur], posArr[i]) <= CONNECT_RADIUS_CELLS) {
+          visited.add(i);
+          queue.push(i);
+        }
+      }
+    }
+    return visited;
+  }
+
+  // total number of separate connected components among all ACTIVE drones
+  // (not just whether they reach the sentinel) - used for the "how
+  // fragmented is the network right now" stat.
+  function countComponents(posArr){
+    var seen = new Array(posArr.length).fill(false);
+    var count = 0;
+    for (var i = 0; i < posArr.length; i++) {
+      if (seen[i] || posArr[i] === null || posArr[i] === undefined) continue;
+      count++;
+      var queue = [i];
+      seen[i] = true;
+      while (queue.length > 0) {
+        var cur = queue.shift();
+        for (var j = 0; j < posArr.length; j++) {
+          if (seen[j] || posArr[j] === null || posArr[j] === undefined) continue;
+          if (euclidCells(posArr[cur], posArr[j]) <= CONNECT_RADIUS_CELLS) { seen[j] = true; queue.push(j); }
+        }
+      }
+    }
+    return count;
+  }
+
+  // ---------- Proactive MST-based relay provisioning ----------
+  // Every RECRUIT_CADENCE ticks: find the convex hull of where the content
+  // drones (searchers) actually are or are trying to go, build a minimum
+  // spanning tree connecting the sentinel to every hull vertex, and place
+  // relays only where an MST edge exceeds the 100 m link range. This shares
+  // one chain across drones that are near each other or in similar
+  // directions (an MST edge, not a fixed compass sector) and avoids ever
+  // provisioning more than the true minimum - interior drones need nothing
+  // extra once the hull itself is spanned. Existing relays are reassigned to
+  // the newly computed slots wherever possible; only the net shortfall gets
+  // recruited, and any relay left over gets released to walk home.
+  var RELAY_SPACING = CONNECT_RADIUS_CELLS - 0.15; // just under the hard link limit, safety margin
+  var RECRUIT_CADENCE = 5; // ticks between provisioning passes
+  var MST_INPUT = "hull";  // "hull" or "all" - see explorationSlots
+
+  function dedupePoints(points){
+    var seen = new Set(), out = [];
+    points.forEach(function(p){
+      var k = p.r + "," + p.c;
+      if (seen.has(k)) return;
+      seen.add(k); out.push(p);
+    });
+    return out;
+  }
+
+  // where a content drone actually needs the network to reach: its claimed
+  // target if it's converging/settled on one, its pending waypoint if it's
+  // still searching (even if currently blocked from moving there - that
+  // blockage IS the demand this whole system exists to resolve), or just its
+  // current spot.
+  function contentDemandPoint(d){
+    if (d.role === "searcher" && d.targetIdx !== -1) {
+      var t = targets[d.targetIdx];
+      return { r: t.r, c: t.c };
+    }
+    // with connectivity monitored rather than hard-gated, a searcher is free
+    // to actually walk where it wants - so its CURRENT position is the true
+    // demand, and it changes smoothly (one cell per tick). Using its random
+    // next waypoint instead made the hull teleport every time a new waypoint
+    // got picked, forcing constant relay reshuffles.
+    return d.pos;
+  }
+
+  // Andrew's monotone chain convex hull. points: [{r,c}, ...]. Returns the
+  // subset that form the hull (interior points excluded) - if there are
+  // fewer than 3 points, every point trivially "is" the hull.
+  function convexHull(points){
+    if (points.length < 3) return points.slice();
+    var pts = points.slice().sort(function(a, b){ return (a.c - b.c) || (a.r - b.r); });
+    function cross(o, a, b){ return (a.c - o.c) * (b.r - o.r) - (a.r - o.r) * (b.c - o.c); }
+    var lower = [];
+    for (var i = 0; i < pts.length; i++) {
+      while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], pts[i]) <= 0) lower.pop();
+      lower.push(pts[i]);
+    }
+    var upper = [];
+    for (var j = pts.length - 1; j >= 0; j--) {
+      while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], pts[j]) <= 0) upper.pop();
+      upper.push(pts[j]);
+    }
+    lower.pop(); upper.pop();
+    return lower.concat(upper);
+  }
+
+  // Prim's algorithm. points[0] must be the root (the sentinel post). Returns
+  // edges as [i, j] index pairs into `points`.
+  function minimumSpanningTree(points){
+    var n = points.length;
+    if (n <= 1) return [];
+    var inTree = new Array(n).fill(false);
+    var minDist = new Array(n).fill(Infinity);
+    var parent = new Array(n).fill(-1);
+    minDist[0] = 0;
+    var edges = [];
+    for (var iter = 0; iter < n; iter++) {
+      var u = -1, best = Infinity;
+      for (var i = 0; i < n; i++) if (!inTree[i] && minDist[i] < best) { best = minDist[i]; u = i; }
+      if (u === -1) break;
+      inTree[u] = true;
+      if (parent[u] !== -1) edges.push([parent[u], u]);
+      for (var v = 0; v < n; v++) {
+        if (inTree[v]) continue;
+        var d = euclidCells(points[u], points[v]);
+        if (d < minDist[v]) { minDist[v] = d; parent[v] = u; }
+      }
+    }
+    return edges;
+  }
+
+  // the required relay positions along one MST edge that's longer than the
+  // link range. Positions have to snap to grid cells, and rounding can push
+  // two neighbouring relays apart by up to ~1.4 cells - enough to silently
+  // break a chain that was "evenly spaced" on paper. So add hops until every
+  // ROUNDED consecutive gap (endpoint -> relays -> endpoint) is verified to
+  // be within the link range.
+  function slotsAlongEdge(A, B){
+    var L = euclidCells(A, B);
+    if (L <= CONNECT_RADIUS_CELLS) return [];
+    var hops = Math.ceil(L / CONNECT_RADIUS_CELLS) - 1;
+    for (var attempt = 0; attempt < 20; attempt++, hops++) {
+      var segments = hops + 1;
+      var slots = [];
+      for (var k = 1; k <= hops; k++) {
+        var t = k / segments;
+        slots.push({
+          r: clamp(Math.round(A.r + (B.r - A.r) * t), 0, GRID - 1),
+          c: clamp(Math.round(A.c + (B.c - A.c) * t), 0, GRID - 1)
+        });
+      }
+      var chain = [A].concat(slots, [B]);
+      var ok = true;
+      for (var i = 0; i + 1 < chain.length; i++) {
+        if (euclidCells(chain[i], chain[i + 1]) > CONNECT_RADIUS_CELLS) { ok = false; break; }
+      }
+      if (ok) return slots;
+    }
+    return slots;
+  }
+
+  // =====================================================================
+  // NETWORK LAYER
+  //   * POI tree (persistent): sentinel + anchors (drones on found POIs) +
+  //     relay slots, each node pointing at its parent toward the sentinel.
+  //     Tier 1: a newly found POI gets a straight chain to the sentinel.
+  //     Tier 2: once that chain is fully manned, the POI compares keeping it
+  //     against branching off ANY node of the tree:
+  //         merge if it needs FEWER drones (n_theta < n_prime), or the same
+  //         number of drones over a shorter path (d_theta < d_prime)
+  //     d in metres, n = relays (n_theta = new relays needed, n_prime =
+  //     relays that merging would actually free - relays other branches
+  //     hang off are protected and never freed). This is the minimum-drone
+  //     (MST-style) network; it replaces the old lambda weighting, which always
+  //     converged to this behaviour at practical values.
+  //   * Exploration support (transient): MST from the whole POI tree to the
+  //     hull explorers, recomputed every cadence.
+  //   * Relays are unlimited. Tree slots keep their drone; spare relays hold
+  //     for 2 minutes, then return home. Explorers are kept at exactly n.
+  // =====================================================================
+  var HOLD_LIMIT = 15;     // 2 minutes at 8 s per tick
+  var N_EXPLORERS = 12;    // slider
+  var tree = null;
+  var reservedSlotCells = new Set(); // relay slot cells explorers must keep clear
+
+  function treeInit(){
+    tree = { nodes: [], poi: {} };
+    tree.nodes.push({ id: 0, r: SENTINEL_POST.r, c: SENTINEL_POST.c, type: "sentinel", parent: null, droneId: 0, alive: true });
+  }
+  function tnAdd(type, r, c, parent){
+    var n = { id: tree.nodes.length, r: r, c: c, type: type, parent: parent, droneId: null, alive: true };
+    tree.nodes.push(n);
+    return n;
+  }
+  function liveNodes(){ return tree.nodes.filter(function(n){ return n.alive; }); }
+  function nodeAt(r, c){
+    for (var i = 0; i < tree.nodes.length; i++) {
+      var n = tree.nodes[i];
+      if (n.alive && n.r === r && n.c === c) return n;
+    }
+    return null;
+  }
+  function hasChildren(nid){
+    return tree.nodes.some(function(n){ return n.alive && n.parent === nid; });
+  }
+  function pathLenToRoot(nid){
+    var L = 0, n = tree.nodes[nid], guard = 0;
+    while (n.parent !== null && guard++ < 500) { var p = tree.nodes[n.parent]; L += euclidCells(n, p); n = p; }
+    return L;
+  }
+  function hopsToRoot(nid){
+    var h = 0, n = tree.nodes[nid], guard = 0;
+    while (n.parent !== null && guard++ < 500) { h++; n = tree.nodes[n.parent]; }
+    return h;
+  }
+  // does node nid's route to the sentinel pass through any node in `set`?
+  function routeUses(nid, set){
+    var n = tree.nodes[nid], guard = 0;
+    while (n && guard++ < 500) {
+      if (set.has(n.id)) return true;
+      n = (n.parent === null) ? null : tree.nodes[n.parent];
+    }
+    return false;
+  }
+
+  // Connect `child` to existing tree node `attachId` with relay slots,
+  // spaced so every hop is within 100 m. If a slot lands on a cell another
+  // tree node already occupies, attach there instead (it's already connected).
+  function linkNode(child, attachId){
+    var target = tree.nodes[attachId];
+    var slots = slotsAlongEdge(child, target); // ordered child -> target
+    var attach = attachId, keep = [];
+    var childSub = new Set([child.id]);
+    for (var i = 0; i < slots.length; i++) {
+      var clash = nodeAt(slots[i].r, slots[i].c);
+      if (clash && clash.id !== child.id && !routeUses(clash.id, childSub)) { attach = clash.id; break; }
+      if (clash) continue;
+      keep.push(slots[i]);
+    }
+    var created = [], parentId = attach;
+    for (var k = keep.length - 1; k >= 0; k--) {
+      var nn = tnAdd("relay", keep[k].r, keep[k].c, parentId);
+      created.unshift(nn.id);
+      parentId = nn.id;
+    }
+    child.parent = parentId;
+    return created;
+  }
+
+  // Tier 1: called the moment a POI is claimed
+  function treeAddPOI(tIdx, droneId){
+    var t = targets[tIdx];
+    var existing = nodeAt(t.r, t.c);
+    var a;
+    if (existing && existing.type === "relay") {
+      a = existing; a.type = "anchor"; // a relay slot happened to sit on the POI
+    } else {
+      a = tnAdd("anchor", t.r, t.c, null);
+      a.chainCreated = linkNode(a, 0);
+    }
+    a.droneId = droneId;
+    a.poi = tIdx;
+    tree.poi[tIdx] = { anchor: a.id, mode: "direct", chain: a.chainCreated || [] };
+  }
+
+  // relays that detaching this anchor would actually free: walk up from its
+  // parent while the node is a relay nobody else hangs off
+  function freeableAbove(anchorNode){
+    var freed = [], cur = anchorNode.parent;
+    while (cur !== null && cur !== 0) {
+      var n = tree.nodes[cur];
+      if (n.type !== "relay") break;
+      var kids = tree.nodes.filter(function(m){ return m.alive && m.parent === cur && m.id !== anchorNode.id && freed.indexOf(m.id) === -1; });
+      if (kids.length > 0) break;
+      freed.push(cur);
+      cur = n.parent;
+    }
+    return freed;
+  }
+
+  function chainManned(ids){
+    return ids.every(function(nid){
+      var n = tree.nodes[nid];
+      if (!n.alive) return true;
+      var d = (n.droneId === null) ? null : drones[n.droneId];
+      return d && d.state === "settled" && d.pos && d.pos.r === n.r && d.pos.c === n.c;
+    });
+  }
+
+  // Tier 2
+  function treeConsiderMerges(){
+    Object.keys(tree.poi).forEach(function(k){
+      var info = tree.poi[k];
+      if (info.mode !== "direct") return;
+      var a = tree.nodes[info.anchor];
+      var ad = drones[a.droneId];
+      if (!ad || ad.state !== "settled") return;
+      if (!chainManned(info.chain)) return; // straight chain must be in place first
+
+      var freed = freeableAbove(a);
+      var dPrime = euclidCells(a, tree.nodes[0]) * SQUARE_SIDE_M; // length of the straight link to the sentinel
+
+      var exclude = new Set(freed.concat([a.id]));
+      var best = null;
+      liveNodes().forEach(function(j){
+        if (exclude.has(j.id) || routeUses(j.id, exclude)) return;
+        var nTheta = slotsAlongEdge(a, j).length;
+        var dTheta = (euclidCells(a, j) + pathLenToRoot(j.id)) * SQUARE_SIDE_M;
+        // fewest new drones first, then the shortest route to the sentinel
+        if (!best || nTheta < best.n || (nTheta === best.n && dTheta < best.d)) best = { j: j, n: nTheta, d: dTheta };
+      });
+      if (!best) return;
+      var fewer = best.n < freed.length;
+      var sameButShorter = best.n === freed.length && best.d < dPrime - 1;   // 1 m margin: grid-rounding noise never triggers a merge
+      if (!fewer && !sameButShorter) return;
+
+      // rewire: prune the old straight chain FIRST, then branch off node j.
+      // (If the branch were built first, linkNode could reuse one of the
+      // old chain's relays as a shortcut - and then the prune would kill it,
+      // orphaning this anchor.)
+      a.parent = null;
+      freed.forEach(function(nid){ tree.nodes[nid].alive = false; });
+      var created = linkNode(a, best.j.id);
+      info.mode = "merged";
+      info.chain = created;
+      logEvent("Target " + (+k + 1) + " merged into the network (" + Math.round(best.d) + " m via " +
+               best.n + " new relay" + (best.n === 1 ? "" : "s") + ", freeing " + freed.length + ").");
+    });
+  }
+
+  // transient slots so hull explorers stay reachable: MST whose roots are
+  // every live tree node, spanning the hull explorers
+  function explorationSlots(){
+    var roots = liveNodes();
+    var ex = [];
+    drones.forEach(function(d){
+      if (d.role !== "searcher" || d.targetIdx !== -1 || !d.pos || d.state !== "searching") return;
+      // an explorer waiting at the edge of its ring wants the network to reach its waypoint
+      if (d.atRingEdge && d.waypoint) ex.push({ r: d.waypoint[0], c: d.waypoint[1] });
+      else ex.push({ r: d.pos.r, c: d.pos.c });
+    });
+    var pts = (MST_INPUT === "hull") ? convexHull(ex) : dedupePoints(ex);
+    var n = pts.length, inT = new Array(n).fill(false), best = new Array(n).fill(Infinity), from = new Array(n).fill(null);
+    for (var i = 0; i < n; i++) {
+      roots.forEach(function(rn){ var d = euclidCells(pts[i], rn); if (d < best[i]) { best[i] = d; from[i] = rn; } });
+    }
+    var slots = [], taken = new Set(roots.map(function(rn){ return rn.r + "," + rn.c; }));
+    for (var it = 0; it < n; it++) {
+      var u = -1, bd = Infinity;
+      for (var q = 0; q < n; q++) if (!inT[q] && best[q] < bd) { bd = best[q]; u = q; }
+      if (u === -1) break;
+      inT[u] = true;
+      slotsAlongEdge(from[u], pts[u]).forEach(function(s){
+        var key = s.r + "," + s.c;
+        if (taken.has(key)) return;
+        taken.add(key);
+        slots.push(s);
+      });
+      for (var v = 0; v < n; v++) {
+        if (inT[v]) continue;
+        var dv = euclidCells(pts[u], pts[v]);
+        if (dv < best[v]) { best[v] = dv; from[v] = pts[u]; }
+      }
+    }
+    return slots;
+  }
+
+  function refPointOf(d){ return d.pos || d.relayTarget || { r: ENTRY_ROW, c: ENTRY_COL }; }
+
+  // cheapest pairs first, so already-well-placed relays keep their spots
+  function greedyMatch(relayList, slots){
+    var pairs = [];
+    relayList.forEach(function(d, ri){
+      slots.forEach(function(s, si){ pairs.push([euclidCells(refPointOf(d), s), ri, si]); });
+    });
+    pairs.sort(function(a, b){ return a[0] - b[0]; });
+    var usedR = new Set(), usedS = new Set(), out = [];
+    for (var p = 0; p < pairs.length; p++) {
+      if (usedR.has(pairs[p][1]) || usedS.has(pairs[p][2])) continue;
+      usedR.add(pairs[p][1]); usedS.add(pairs[p][2]);
+      out.push([pairs[p][1], pairs[p][2]]);
+    }
+    return out;
+  }
+
+  function sendRelayTo(d, slot){
+    var moved = !d.relayTarget || d.relayTarget.r !== slot.r || d.relayTarget.c !== slot.c;
+    d.relayTarget = { r: slot.r, c: slot.c };
+    d.holdTicks = 0;
+    if (d.state === "waiting") return;
+    var there = d.pos && d.pos.r === slot.r && d.pos.c === slot.c;
+    if (there) d.state = "settled";
+    else if (moved || d.state === "holding" || d.state === "settled") d.state = "converging";
+  }
+
+  function assignRelays(){
+    var relays = drones.filter(function(d){
+      return d.role === "support" && d.state !== "exiting" && d.state !== "departed";
+    });
+    var free = new Set(relays.map(function(d){ return d.id; }));
+
+    // 1) tree slots keep their current drone if it's still valid
+    var treeRelays = liveNodes().filter(function(n){ return n.type === "relay"; });
+    treeRelays.forEach(function(n){
+      if (n.droneId === null) return;
+      var d = drones[n.droneId];
+      if (!d || d.role !== "support" || d.state === "exiting" || d.state === "departed" || d.slotNode !== n.id) { n.droneId = null; return; }
+      free.delete(d.id);
+      sendRelayTo(d, n);
+    });
+    // drones pointing at dead/foreign tree nodes are free again
+    relays.forEach(function(d){
+      if (d.slotNode !== null && d.slotNode !== undefined) {
+        var n = tree.nodes[d.slotNode];
+        if (!n || !n.alive || n.droneId !== d.id) d.slotNode = null;
+      }
+    });
+
+    // 2) empty tree slots: nearest free relay, otherwise recruit
+    var empty = treeRelays.filter(function(n){ return n.droneId === null; });
+    empty.sort(function(a, b){ return pathLenToRoot(a.id) - pathLenToRoot(b.id); });
+    var freeList = relays.filter(function(d){ return free.has(d.id); });
+    var batch = [];
+    greedyMatch(freeList, empty).forEach(function(m){
+      var d = freeList[m[0]], n = empty[m[1]];
+      n.droneId = d.id; d.slotNode = n.id; free.delete(d.id);
+      sendRelayTo(d, n);
+    });
+    empty.forEach(function(n){
+      if (n.droneId !== null) return;
+      var id = recruitRelay(n);
+      if (id === -1) return;
+      n.droneId = id; drones[id].slotNode = n.id;
+      batch.push(id);
+    });
+
+    // 3) exploration slots from what's left, otherwise recruit
+    var slots = explorationSlots();
+    reservedSlotCells = new Set();
+    treeRelays.forEach(function(n){ if (n.alive) reservedSlotCells.add(n.r + "," + n.c); });
+    slots.forEach(function(s){ reservedSlotCells.add(s.r + "," + s.c); });
+    freeList = relays.filter(function(d){ return free.has(d.id); });
+    var slotFilled = new Array(slots.length).fill(false);
+    greedyMatch(freeList, slots).forEach(function(m){
+      var d = freeList[m[0]];
+      slotFilled[m[1]] = true; free.delete(d.id);
+      d.slotNode = null;
+      sendRelayTo(d, slots[m[1]]);
+    });
+    slots.forEach(function(s, si){
+      if (slotFilled[si]) return;
+      var id = recruitRelay(s);
+      if (id !== -1) batch.push(id);
+    });
+    if (batch.length > 0) entryQueue.unshift.apply(entryQueue, batch);
+
+    // 4) anything still unassigned holds in place (see HOLD_LIMIT in Phase 3)
+    relays.forEach(function(d){
+      if (!free.has(d.id)) return;
+      d.slotNode = null;
+      if (d.state === "waiting") { d.state = "departed"; return; } // never entered - just cancel it
+      if (d.state !== "holding") { d.state = "holding"; d.holdTicks = 0; d.relayTarget = null; }
+    });
+  }
+
+  // keep exactly n explorers: promote holding relays first, then recruit
+  function topUpExplorers(){
+    if (targets.every(function(t){ return t.claimedBy !== null; })) return;
+    var count = drones.filter(function(d){
+      return d.role === "searcher" && d.targetIdx === -1 && d.state !== "exiting" && d.state !== "departed";
+    }).length;
+    var holders = drones.filter(function(d){ return d.role === "support" && d.state === "holding"; });
+    while (count < N_EXPLORERS && holders.length > 0) {
+      var h = holders.shift();
+      h.role = "searcher"; h.color = droneColor(h.id); h.state = "searching";
+      h.waypoint = null; h.relayTarget = null; h.slotNode = null; h.posHistory = [];
+      logEvent(droneName(h.id) + " switched from spare relay to explorer.");
+      count++;
+    }
+    while (count < N_EXPLORERS && drones.length < 400) {
+      var id = drones.length;
+      drones.push(newDroneObj(id, "searcher", droneColor(id), null));
+      entryQueue.push(id);
+      logEvent(droneName(id) + " dispatched as a replacement explorer.");
+      count++;
+    }
+  }
+
+  function networkUpdate(){
+    treeConsiderMerges();
+    assignRelays();
+    topUpExplorers();
+  }
+
+  function newDroneObj(id, role, color, relayTarget){
+    return {
+      id: id, color: color, pos: null, state: "waiting", role: role,
+      waypoint: null, targetIdx: -1, relayTarget: relayTarget, entryTick: null,
+      stalledTicks: 0, posHistory: [], disconnectedTicks: 0, slotNode: null, holdTicks: 0
+    };
+  }
+
+  function recruitRelay(target){
+    if (drones.length >= 400) return -1; // safety cap
+    var id = drones.length;
+    drones.push(newDroneObj(id, "support", SUPPORT_COLOR, { r: target.r, c: target.c }));
+    logEvent(droneName(id) + " recruited as a relay.");
+    return id;
+  }
+
+  function randomFreeCell(blocked){
+    for (var tries = 0; tries < 300; tries++) {
+      var r = Math.floor(Math.random() * GRID);
+      var c = Math.floor(Math.random() * GRID);
+      if (!blocked.has(r + "," + c)) return [r, c];
+    }
+    return null;
+  }
+
+  // prefer a free cell nobody in the swarm has stood on before (shared
+  // memory - not just this drone's own history); fall back to any free cell
+  function randomUnexploredCell(drone, blocked){
+    for (var tries = 0; tries < 300; tries++) {
+      var r = Math.floor(Math.random() * GRID);
+      var c = Math.floor(Math.random() * GRID);
+      var key = r + "," + c;
+      if (blocked.has(key)) continue;
+      if (globalVisited.has(key)) continue;
+      return [r, c];
+    }
+    return randomFreeCell(blocked);
+  }
+
+  // ---------- Staleness-map search ----------
+  // Every cell stores how many ticks have passed since it was last inside
+  // any drone's detection zone. All cells go up by 1 each tick; cells a
+  // drone can currently see are reset to 0. Never-seen cells start at
+  // STALE_INIT so unexplored ground always outranks re-checking old ground.
+  // Each explorer heads for the cell with the best score
+  //     staleness / (distance + 1)
+  // among cells it may legally target (free, inside the frontier, and not
+  // already claimed by another explorer). Dividing by distance stops a
+  // drone crossing the board for a cell only slightly staler than one close by.
+  var STALE_INIT = 1000;   // "never seen" - far larger than any real revisit age
+  var CLAIM_SPACING = 2;   // explorers won't pick a cell within this many squares of another explorer's waypoint
+  var TABU_TICKS = 30;     // a waypoint that got its explorer cut off is skipped by that explorer for this long
+  var MIN_STALE = 10;      // cells seen within the last 10 ticks aren't worth flying to (stops flip-flopping between two fresh cells)
+
+  function staleIdx(r, c){ return r * GRID + c; }
+
+  // ---------- Global memory: which cells have EVER been seen ----------
+  // Shared by the whole swarm. A cell is marked the moment it falls inside any
+  // drone's detection footprint. POIs are static and a footprint always detects
+  // a POI inside it, so a seen cell can never be hiding one - re-searching it
+  // is wasted effort. Explorers use this map to go only where nobody has looked.
+  var seenEver;          // Uint8Array, 1 = seen at least once
+  var unseenCount = GRID * GRID;
+  function resetSeen(){
+    seenEver = new Uint8Array(GRID * GRID);
+    unseenCount = GRID * GRID;
+  }
+
+  function resetStaleness(){
+    staleness = new Float32Array(GRID * GRID);
+    staleness.fill(STALE_INIT);
+  }
+
+  function ageStaleness(){
+    for (var i = 0; i < staleness.length; i++) staleness[i] += 1;
+  }
+
+  // every active drone (explorers, relays, sentinel, anchors) refreshes what it can see
+  function refreshStalenessFromDrones(){
+    for (var i = 0; i < drones.length; i++) {
+      var d = drones[i];
+      if (!d.pos || d.state === "waiting" || d.state === "departed") continue;
+      for (var dr = -DETECTION_RADIUS; dr <= DETECTION_RADIUS; dr++) {
+        for (var dc = -DETECTION_RADIUS; dc <= DETECTION_RADIUS; dc++) {
+          var r = d.pos.r + dr, c = d.pos.c + dc;
+          if (r < 0 || r >= GRID || c < 0 || c >= GRID) continue;
+          staleness[staleIdx(r, c)] = 0;
+          if (!seenEver[staleIdx(r, c)]) { seenEver[staleIdx(r, c)] = 1; unseenCount--; }
+        }
+      }
+    }
+  }
+
+  // per-explorer short-term memory of waypoints that got it cut off from the
+  // network - without this, a deterministic staleness pick sends the drone
+  // straight back to the same unreachable edge cell and it flip-flops
+  function markTabu(drone, wp){
+    if (!wp) return;
+    if (!drone.tabu) drone.tabu = {};
+    for (var dr = -1; dr <= 1; dr++) for (var dc = -1; dc <= 1; dc++) {
+      drone.tabu[(wp[0] + dr) + "," + (wp[1] + dc)] = tickCount + TABU_TICKS;
+    }
+  }
+  function isTabu(drone, r, c){
+    return !!(drone.tabu && drone.tabu[r + "," + c] > tickCount);
+  }
+
+  // explorers are always nudged away from the gate (see tick()), so cells
+  // touching it can never be reached as a destination - never target them
+  function nearGate(cell){
+    return GATE_CELLS.some(function(g){ return chebyshev(cell, g) <= 1; });
+  }
+
+  // waypoints other explorers are already heading for
+  function claimedWaypoints(self){
+    var claimed = [];
+    drones.forEach(function(o){
+      if (o !== self && o.role === "searcher" && o.targetIdx === -1 && o.waypoint && o.state === "searching") claimed.push({ r: o.waypoint[0], c: o.waypoint[1] });
+    });
+    return claimed;
+  }
+
+  function isClaimed(cell, claimed){
+    for (var i = 0; i < claimed.length; i++) if (chebyshev(cell, claimed[i]) <= CLAIM_SPACING) return true;
+    return false;
+  }
+
+  // Frontier leash: a waypoint must lie within FRONTIER_REACH of the stable
+  // connected network, so any POI found there can be reported within 10 s.
+  var FRONTIER_REACH = CONNECT_RADIUS_CELLS + 1; // 140 m: out of range by at most one step, so any POI found here can be reported within 10 s
+  var currentConnectedPositions = []; // refreshed at the start of every tick
+
+  function distToNetwork(cell, selfPos){
+    var best = Infinity;
+    for (var i = 0; i < currentConnectedPositions.length; i++) {
+      var q = currentConnectedPositions[i];
+      if (selfPos && q.r === selfPos.r && q.c === selfPos.c) continue;
+      var d = euclidCells(cell, q);
+      if (d < best) best = d;
+    }
+    return best;
+  }
+
+  function withinFrontier(cell){
+    for (var i = 0; i < currentConnectedPositions.length; i++) {
+      if (euclidCells(cell, currentConnectedPositions[i]) <= FRONTIER_REACH) return true;
+    }
+    return false;
+  }
+
+  function pickWaypoint(drone, blocked){
+    var claimed = claimedWaypoints(drone);
+    var best = null, bestScore = -Infinity, r, c, cell;
+    // (1) nearest UNSEEN cell inside the frontier
+    for (r = 0; r < GRID; r++) {
+      for (c = 0; c < GRID; c++) {
+        if (seenEver[staleIdx(r, c)]) continue;
+        cell = { r: r, c: c };
+        if (blocked.has(r + "," + c)) continue;
+        if (r === drone.pos.r && c === drone.pos.c) continue;
+        if (!withinFrontier(cell)) continue;
+        if (chebyshev(cell, drone.pos) <= DETECTION_RADIUS) continue;
+        if (nearGate(cell)) continue;
+        if (isClaimed(cell, claimed)) continue;
+        if (isTabu(drone, r, c)) continue;
+        var s1 = 1 / (euclidCells(cell, drone.pos) + 1) + Math.random() * 1e-6;
+        if (s1 > bestScore) { bestScore = s1; best = [r, c]; }
+      }
+    }
+    if (best) { drone.wpUnseen = true; return best; }
+    // (2) no unseen cell inside the frontier: the unseen cell that needs the
+    //     least total effort = how far the network must grow + how far to fly.
+    //     Beyond the frontier, so relays get extended toward it (atRingEdge).
+    for (r = 0; r < GRID; r++) {
+      for (c = 0; c < GRID; c++) {
+        if (seenEver[staleIdx(r, c)]) continue;
+        cell = { r: r, c: c };
+        if (blocked.has(r + "," + c)) continue;
+        if (nearGate(cell)) continue;
+        if (isClaimed(cell, claimed)) continue;
+        if (isTabu(drone, r, c)) continue;
+        var s2 = 1 / (1 + distToNetwork(cell, null) + euclidCells(cell, drone.pos)) + Math.random() * 1e-6;
+        if (s2 > bestScore) { bestScore = s2; best = [r, c]; }
+      }
+    }
+    if (best) { drone.wpUnseen = true; return best; }
+    // (3) everything has been seen: fall back to the original staleness search
+    drone.wpUnseen = false;
+    return pickWaypointByStaleness(drone, blocked);
+  }
+
+  function pickWaypointByStaleness(drone, blocked){
+    var claimed = claimedWaypoints(drone);
+    var best = null, bestScore = -Infinity;
+    for (var r = 0; r < GRID; r++) {
+      for (var c = 0; c < GRID; c++) {
+        var cell = { r: r, c: c };
+        if (blocked.has(r + "," + c)) continue;
+        if (r === drone.pos.r && c === drone.pos.c) continue;
+        if (!withinFrontier(cell)) continue;
+        if (chebyshev(cell, drone.pos) <= DETECTION_RADIUS) continue; // already in view - going there reveals nothing new
+        if (nearGate(cell)) continue;
+        if (isClaimed(cell, claimed)) continue;
+        if (isTabu(drone, r, c)) continue;
+        var s = staleness[staleIdx(r, c)];
+        if (s < MIN_STALE) continue;
+        // tiny jitter only breaks exact ties so explorers don't all pick the same corner
+        var score = s / (euclidCells(cell, drone.pos) + 1) + Math.random() * 1e-3;
+        if (score > bestScore) { bestScore = score; best = [r, c]; }
+      }
+    }
+    if (best) return best;
+    // nothing stale left inside the frontier: push the boundary outward
+    return stalestNearNetwork(blocked, drone);
+  }
+
+  // fallback: the stale cell with the best staleness / (distance to the
+  // stable network + 1) anywhere on the board - grows the network toward
+  // stale ground one step at a time rather than leaping across the board.
+  function stalestNearNetwork(blocked, self){
+    var claimed = claimedWaypoints(self);
+    var best = null, bestScore = -Infinity;
+    for (var r = 0; r < GRID; r++) {
+      for (var c = 0; c < GRID; c++) {
+        if (blocked.has(r + "," + c)) continue;
+        var cell = { r: r, c: c };
+        if (nearGate(cell)) continue;
+        if (isClaimed(cell, claimed)) continue;
+        var s = staleness[staleIdx(r, c)];
+        if (s < MIN_STALE) continue;
+        var score = s / (distToNetwork(cell, null) + 1) + Math.random() * 1e-3;
+        if (score > bestScore) { bestScore = score; best = [r, c]; }
+      }
+    }
+    return best;
+  }
+
+  function logEvent(msg){
+    logs.push({ tick: tickCount, msg: msg });
+    if (logs.length > 60) logs.shift();
+    renderLog();
+  }
+
+  // mission ends once every target has been found AND whichever drone claimed
+  // it has finished settling there - excess drones with nothing left to find
+  // don't block completion.
+  // =====================================================================
+  // STRATEGY A: formation sweep, POIs only need to be REPORTED (no anchors)
+  //   * a line of drones at columns 1,3,...,23 sweeps top to bottom. Each
+  //     drone sees one column either side, so all 25 columns are covered,
+  //     and neighbours are 2 cells (80 m) apart - inside the 100 m radio range.
+  //   * a trunk of relays down column 12 (one every 2 rows) links the line
+  //     back to the sentinel. Trunk relays trail just behind the line and
+  //     drop off at their row as it passes.
+  //   * the line advances one row per tick only when every line drone is in
+  //     place AND the line would still be linked to the sentinel afterwards.
+  //   * a POI is reported the moment its finder is connected; the mission
+  //     ends when all POIs have been reported. Nobody stays on a POI.
+  // =====================================================================
+  var MODE = "adaptive";
+
+  // ---------- POIs appear at random times ----------
+  // N_TARGETS POIs in total. Each has a random location (same placement rules
+  // as before) and a random appearance time, uniform over [0, window]. Once a
+  // POI appears it stays. A POI can only be detected after it has appeared.
+  // Window 0 = every POI present from the start (the original behaviour; no
+  // extra random numbers are drawn, so earlier results are reproduced exactly).
+  var APPEAR_WINDOW_TICKS = 0;
+  function appeared(t){ return t.appearTick <= tickCount; }
+  var SWEEP_COLS = [];
+  for (var scc = 1; scc < GRID; scc += 2) SWEEP_COLS.push(scc);                 // 12 columns
+  var TRUNK_COL = ENTRY_COL;                                                   // 12, between line drones
+  var TRUNK_ROWS = [];
+  for (var trr = SENTINEL_POST.r + 2; trr <= GRID - 3; trr += 2) TRUNK_ROWS.push(trr); // 4,6,...,22
+  var sweep = null;
+
+  function initSweepDrones(){
+    var list = [newDroneObj(0, "sentinel", SUPPORT_COLOR, { r: SENTINEL_POST.r, c: SENTINEL_POST.c })];
+    sweep = { row: 1, line: [], cols: [], started: false, dir: 1, trunkDone: false };
+    // build the line from the centre outward: each new drone flies along drones
+    // that have already settled and takes the slot 2 cells beyond the last one,
+    // so it is always within radio range and anything it spots is reported at once
+    var order = SWEEP_COLS.slice().sort(function(a, b){ return Math.abs(a - ENTRY_COL) - Math.abs(b - ENTRY_COL); });
+    order.forEach(function(col){
+      var id = list.length;
+      var d = newDroneObj(id, "searcher", droneColor(id), null);
+      d.sweepCol = col;
+      list.push(d);
+      sweep.line.push(id);
+      sweep.cols.push(col);
+    });
+    TRUNK_ROWS.forEach(function(row){
+      var id = list.length;
+      var d = newDroneObj(id, "support", SUPPORT_COLOR, { r: row, c: TRUNK_COL });
+      d.trunkRow = row;
+      list.push(d);
+    });
+    return list;
+  }
+
+  function sweepGoal(d){
+    if (d.role === "sentinel") return { r: SENTINEL_POST.r, c: SENTINEL_POST.c };
+    if (d.sweepCol !== undefined) return { r: sweep.row, c: d.sweepCol };
+    if (sweep.trunkDone) return { r: d.trunkRow, c: TRUNK_COL };                     // trunk fully laid: stay put
+    return { r: Math.min(d.trunkRow, Math.max(1, sweep.row - 1)), c: TRUNK_COL };   // first pass: trail just behind the line
+  }
+
+  function tickSweep(){
+    tickCount++;
+    ageStaleness();
+    attemptEntry();
+    var snap = snapshotPositions();
+
+    // advance the line one row if everyone is in place and it stays linked
+    var ready = sweep.line.every(function(id, k){
+      var p = drones[id].pos;
+      return p && p.r === sweep.row && p.c === sweep.cols[k];
+    });
+    // POIs can appear behind the line, so the line sweeps down, then back up,
+    // and repeats until every POI has appeared and been reported
+    if (ready && sweep.dir === 1 && sweep.row >= GRID - 2) { sweep.dir = -1; sweep.trunkDone = true; }
+    else if (ready && sweep.dir === -1 && sweep.row <= 1) { sweep.dir = 1; }
+    var nextRow = sweep.row + sweep.dir;
+    if (ready && nextRow >= 1 && nextRow <= GRID - 2) {
+      var test = snap.slice();
+      var clear = true;
+      sweep.line.forEach(function(id, k){
+        var nxt = { r: nextRow, c: sweep.cols[k] };
+        for (var i = 0; i < snap.length; i++) if (i !== id && snap[i] && snap[i].r === nxt.r && snap[i].c === nxt.c) clear = false;
+        test[id] = nxt;
+      });
+      var reachT = connectedSetFromPositions(test);
+      if (clear && sweep.line.every(function(id){ return reachT.has(id); })) sweep.row = nextRow;
+    }
+
+    // everyone heads for their slot (one cell per tick)
+    if (sweep.row > 1) sweep.started = true;
+    var reach0 = connectedSetFromPositions(snap);
+    var candidates = new Array(drones.length).fill(null);
+    for (var i = 0; i < drones.length; i++) {
+      var d = drones[i];
+      if (!d.pos || d.state === "waiting" || d.state === "departed") continue;
+      var goal = sweepGoal(d);
+      if (d.pos.r === goal.r && d.pos.c === goal.c) { candidates[i] = d.pos; continue; }
+      var pth = dijkstra([d.pos.r, d.pos.c], [goal.r, goal.c], blockedFromSnapshot(snap, i));
+      var cand = (pth && pth.length > 0) ? { r: pth[0][0], c: pth[0][1] } : d.pos;
+      // while the line is forming, a linked drone never steps out of range of
+      // every other linked drone - it waits a tick for the chain to catch up,
+      // so anything it spots on the way can still be reported within 10 s
+      if (!sweep.started && d.sweepCol !== undefined && reach0.has(i)) {
+        var isLinked = function(cell){
+          var ok = false;
+          reach0.forEach(function(j){ if (j !== i && snap[j] && euclidCells(cell, snap[j]) <= CONNECT_RADIUS_CELLS) ok = true; });
+          return ok;
+        };
+        if (!isLinked(cand)) {
+          // several steps are often equally short; take one that stays linked
+          var blk = blockedFromSnapshot(snap, i), need = chebyshev(d.pos, goal) - 1, alt = null, altD = Infinity;
+          for (var adr = -1; adr <= 1; adr++) for (var adc = -1; adc <= 1; adc++) {
+            if (!adr && !adc) continue;
+            var nc = { r: d.pos.r + adr, c: d.pos.c + adc };
+            if (nc.r < 0 || nc.r >= GRID || nc.c < 0 || nc.c >= GRID || blk.has(nc.r + "," + nc.c)) continue;
+            if (chebyshev(nc, goal) !== need || !isLinked(nc)) continue;
+            var dd = euclidCells(nc, goal);
+            if (dd < altD) { altD = dd; alt = nc; }
+          }
+          cand = alt || d.pos;   // nothing equally good stays linked: wait a tick
+        }
+      }
+      candidates[i] = cand;
+    }
+    // commit in id order: no two drones may share a cell (same rule as the adaptive mode)
+    var committed = snap.slice();
+    for (var cj = 0; cj < drones.length; cj++) {
+      var cand = candidates[cj];
+      if (!cand) continue;
+      var conflict = false;
+      for (var oj = 0; oj < drones.length; oj++) {
+        if (oj !== cj && committed[oj] && committed[oj].r === cand.r && committed[oj].c === cand.c) { conflict = true; break; }
+      }
+      if (!conflict) committed[cj] = cand;
+    }
+    for (var ck = 0; ck < drones.length; ck++) {
+      var d3 = drones[ck];
+      if (!committed[ck] || d3.state === "waiting" || d3.state === "departed") continue;
+      d3.pos = { r: committed[ck].r, c: committed[ck].c };
+      globalVisited.add(d3.pos.r + "," + d3.pos.c);
+      var g3 = sweepGoal(d3);
+      if (d3.role !== "searcher") d3.state = (d3.pos.r === g3.r && d3.pos.c === g3.c && (d3.role === "sentinel" || g3.r === d3.trunkRow)) ? "settled" : "converging";
+    }
+
+    refreshStalenessFromDrones();
+    var live = snapshotPositions();
+    var reach = connectedSetFromPositions(live);
+    lastComponentCount = countComponents(live);
+    lastPointsDiscovered = targets.filter(function(t){ return t.claimedBy !== null; }).length;
+
+    // pending reports go through as soon as the finder is linked
+    targets.forEach(function(tg){
+      if (tg.discoveredTick !== null && tg.reportedTick === null && reach.has(tg.claimedBy)) tg.reportedTick = tickCount;
+    });
+    // detection: any active drone sees every POI in its 3x3 footprint
+    for (var fi = 0; fi < drones.length; fi++) {
+      var f = drones[fi];
+      if (f.role === "sentinel" || !f.pos || f.state === "waiting" || f.state === "departed") continue;
+      for (var ti = 0; ti < targets.length; ti++) {
+        var t = targets[ti];
+        if (t.claimedBy !== null || !appeared(t)) continue;
+        if (Math.abs(t.r - f.pos.r) <= DETECTION_RADIUS && Math.abs(t.c - f.pos.c) <= DETECTION_RADIUS) {
+          t.claimedBy = f.id;
+          t.discoveredTick = tickCount;
+          t.reportedTick = reach.has(f.id) ? tickCount : null;
+          logEvent(droneName(f.id) + " found target " + (ti + 1) + (reach.has(f.id) ? " and reported it immediately." : " (out of range - will report when linked)."));
+        }
+      }
+    }
+
+    if (tickCount >= MAX_TICKS) {
+      stopLoop();
+      logEvent("Reached step limit \u2014 simulation halted.");
+    }
+    render();
+    updateStatus();
+  }
+
+  // =====================================================================
+  // STRATEGY: T sweep + HOLD POIs + MST network
+  //   * the same T formation sweeps back and forth (line + trunk).
+  //   * a line drone that spots a POI reports it (the line is connected) and
+  //     stays on it as its holder; the nearest of N_RESERVE reserve drones
+  //     trailing behind the line takes over the empty slot, and a new reserve
+  //     is dispatched from the gate. If a relay spots a POI, it reports it and
+  //     a fresh holder is dispatched from the gate.
+  //   * each new holder is linked to the NEAREST node of the permanent network
+  //     (sentinel, trunk, other holders and their relays) with relays <= 100 m
+  //     apart - growing the network exactly like Prim's MST, one point at a
+  //     time. Relays become network nodes too, so later branches can attach
+  //     mid-chain.
+  //   * a line drone whose cell is occupied by a parked drone shifts one column
+  //     sideways (its neighbours still cover everything).
+  //   * mission complete: all POIs appeared, reported, held, and every holder
+  //     linked to the sentinel.
+  // =====================================================================
+  var N_RESERVE = 2;
+  var RESERVE_COLS = [6, 18];
+
+  function initSweepHoldDrones(){
+    var list = initSweepDrones();          // sentinel, line (centre-out), trunk
+    sweep.reserve = [];
+    for (var k = 0; k < N_RESERVE; k++) {
+      var id = list.length;
+      var d = newDroneObj(id, "searcher", droneColor(id), null);
+      d.reserveCol = RESERVE_COLS[k];
+      list.push(d);
+      sweep.reserve.push(id);
+    }
+    return list;
+  }
+
+  // trunk slots are permanent network nodes from the start (sentinel -> row 4 -> row 6 ...)
+  function initTrunkNodes(){
+    var parent = 0;
+    drones.forEach(function(d){
+      if (d.trunkRow === undefined) return;
+      var n = tnAdd("relay", d.trunkRow, TRUNK_COL, parent);
+      n.droneId = d.id;
+      d.slotNode = n.id;
+      parent = n.id;
+    });
+  }
+
+  function parkedCells(snap){
+    // cells held by any drone that is not part of the moving line. The line
+    // steers around ALL of them - parked or moving - instead of waiting for a
+    // moving drone to clear its path (that drone may be waiting for the line,
+    // and neither would ever give way). Every drone also sees its own 3x3
+    // area, so stepping around one doesn't open a coverage gap.
+    var s = new Set();
+    for (var i = 0; i < drones.length; i++) {
+      var d = drones[i];
+      if (!snap[i] || d.sweepCol !== undefined) continue;
+      s.add(snap[i].r + "," + snap[i].c);
+    }
+    return s;
+  }
+
+  function lineSlot(row, col, occ){
+    var offs = [0, 1, -1];
+    for (var i = 0; i < offs.length; i++) {
+      var c = col + offs[i];
+      if (c < 0 || c >= GRID) continue;
+      if (!occ.has(row + "," + c)) return { r: row, c: c };
+    }
+    return { r: row, c: col };
+  }
+
+  // positions for the whole line at `row`: each drone takes its column, else the
+  // nearest free column (+1, -1, then +/-2) not blocked by a parked drone and not
+  // already taken by another line drone
+  function lineSlots(row, occ){
+    var taken = new Set(), out = {};
+    var offs = [0, 1, -1, 2, -2];
+    sweep.line.forEach(function(id){
+      if (id === null) return;
+      var col = drones[id].sweepCol, pick = null;
+      for (var i = 0; i < offs.length && !pick; i++) {
+        var cc = col + offs[i], key = row + "," + cc;
+        if (cc < 0 || cc >= GRID || occ.has(key) || taken.has(key)) continue;
+        pick = { r: row, c: cc };
+      }
+      if (!pick) pick = { r: row, c: col };
+      taken.add(pick.r + "," + pick.c);
+      out[id] = pick;
+    });
+    return out;
+  }
+
+  function holdGoal(d, occ){
+    if (d.role === "sentinel") return { r: SENTINEL_POST.r, c: SENTINEL_POST.c };
+    if (d.anchorPoi !== undefined) { var t = targets[d.anchorPoi]; return { r: t.r, c: t.c }; }
+    if (d.treeRelay) return d.relayTarget;
+    if (d.trunkRow !== undefined) return trunkGoalHold(d);
+    if (d.sweepCol !== undefined) { var ls = lineSlots(sweep.row, occ); return ls[d.id] || lineSlot(sweep.row, d.sweepCol, occ); }
+    if (d.reserveCol !== undefined) {
+      var rr = clamp(sweep.row - sweep.dir, 0, GRID - 1);
+      for (var off = 0; off < GRID; off++) {
+        var cs = [d.reserveCol + off, d.reserveCol - off];
+        for (var k = 0; k < cs.length; k++) {
+          if (cs[k] >= 0 && cs[k] < GRID && !occ.has(rr + "," + cs[k])) return { r: rr, c: cs[k] };
+        }
+      }
+    }
+    return d.pos;
+  }
+
+  // trunk relays for this strategy: once the line has passed a relay's row it
+  // goes to that row; the rest trail in SINGLE FILE up the centre column, one per
+  // free row behind the line, next-to-drop closest to the line. (All trailing at
+  // one spot made them crowd into the cells the line needed next.)
+  function trunkGoalHold(d){
+    if (sweep.trunkDone || d.trunkRow <= sweep.row - 1) return { r: d.trunkRow, c: TRUNK_COL };
+    var trailing = drones.filter(function(o){ return o.trunkRow !== undefined && o.trunkRow > sweep.row - 1; })
+                         .sort(function(a, b){ return a.trunkRow - b.trunkRow; });
+    var k = trailing.indexOf(d);
+    var placed = new Set(drones.filter(function(o){ return o.trunkRow !== undefined && o.trunkRow <= sweep.row - 1; })
+                               .map(function(o){ return o.trunkRow; }));
+    var rows = [];
+    for (var rr = sweep.row - 1; rr >= 1 && rows.length <= k; rr--) if (!placed.has(rr) && rr !== SENTINEL_POST.r) rows.push(rr);
+    return { r: (k < rows.length) ? rows[k] : Math.max(1, sweep.row - 1), c: TRUNK_COL };
+  }
+
+  function recruitFront(d){ drones.push(d); entryQueue.unshift(d.id); return d; }
+
+  function newReserve(col){
+    var d = newDroneObj(drones.length, "searcher", droneColor(drones.length), null);
+    d.reserveCol = col;
+    recruitFront(d);
+    sweep.reserve.push(d.id);
+  }
+
+  // fill line slot k: nearest reserve, else a fresh drone from the gate
+  function fillSlot(k){
+    var best = -1, bestD = Infinity;
+    sweep.reserve.forEach(function(id, i){
+      var r = drones[id];
+      var p = r.pos || { r: ENTRY_ROW, c: ENTRY_COL };
+      var dd = Math.abs(p.c - sweep.cols[k]) + Math.abs(p.r - sweep.row);
+      if (dd < bestD) { bestD = dd; best = i; }
+    });
+    if (best !== -1) {
+      var rid = sweep.reserve.splice(best, 1)[0];
+      var r = drones[rid];
+      var col = r.reserveCol;
+      delete r.reserveCol;
+      r.sweepCol = sweep.cols[k];
+      sweep.line[k] = rid;
+      newReserve(col);                     // keep N_RESERVE in play
+    } else {
+      var d = newDroneObj(drones.length, "searcher", droneColor(drones.length), null);
+      d.sweepCol = sweep.cols[k];
+      recruitFront(d);
+      sweep.line[k] = d.id;
+    }
+  }
+
+  function nearestNetworkNode(a){
+    var best = null, bd = Infinity;
+    liveNodes().forEach(function(n){
+      if (n.id === a.id) return;
+      var dd = euclidCells(a, n);
+      if (dd < bd) { bd = dd; best = n; }
+    });
+    return best;
+  }
+
+  // POI ti is now held by drone holderId: add it to the network (MST growth)
+  function holdAndLink(ti, holderId){
+    var t = targets[ti];
+    t.heldBy = holderId;
+    drones[holderId].anchorPoi = ti;
+    var a = tnAdd("anchor", t.r, t.c, null);
+    a.droneId = holderId;
+    a.poi = ti;
+    var attach = nearestNetworkNode(a);
+    var created = linkNode(a, attach.id);          // ordered holder -> network
+    for (var i = created.length - 1; i >= 0; i--) { // man it from the network outward
+      var n = tree.nodes[created[i]];
+      var d = newDroneObj(drones.length, "support", SUPPORT_COLOR, { r: n.r, c: n.c });
+      d.treeRelay = true;
+      d.slotNode = n.id;
+      n.droneId = d.id;
+      recruitFront(d);
+    }
+  }
+
+  function tickSweepHold(){
+    tickCount++;
+    ageStaleness();
+    attemptEntry();
+    var snap = snapshotPositions();
+    var occ = parkedCells(snap);
+    if (sweep.row > 1) sweep.started = true;
+    if (sweep.started && sweep.pendingTrunk && sweep.pendingTrunk.length) {
+      entryQueue = sweep.pendingTrunk.concat(entryQueue);   // line is moving: send the trunk in
+      sweep.pendingTrunk = [];
+    }
+
+    // advance the line while any POI is still unfound (appeared or not)
+    var needSweep = targets.some(function(t){ return t.claimedBy === null; });
+    var curSlots = lineSlots(sweep.row, occ);
+    var ready = needSweep && sweep.line.every(function(id){
+      if (id === null || !drones[id].pos) return false;
+      var s = curSlots[id];
+      return drones[id].pos.r === s.r && drones[id].pos.c === s.c;
+    });
+    if (ready && sweep.dir === 1 && sweep.row >= GRID - 2) { sweep.dir = -1; sweep.trunkDone = true; }
+    else if (ready && sweep.dir === -1 && sweep.row <= 1) { sweep.dir = 1; }
+    var nextRow = sweep.row + sweep.dir;
+    if (ready && nextRow >= 1 && nextRow <= GRID - 2) {
+      var test = snap.slice(), clear = true, nextSlots = lineSlots(nextRow, occ);
+      sweep.line.forEach(function(id){
+        var nxt = nextSlots[id];
+        for (var i = 0; i < snap.length; i++) if (i !== id && snap[i] && snap[i].r === nxt.r && snap[i].c === nxt.c) clear = false;
+        test[id] = nxt;
+      });
+      var reachT = connectedSetFromPositions(test);
+      if (clear && sweep.line.every(function(id){ return reachT.has(id); })) sweep.row = nextRow;
+    }
+
+    var reach0 = connectedSetFromPositions(snap);
+    var candidates = new Array(drones.length).fill(null);
+    for (var i = 0; i < drones.length; i++) {
+      var d = drones[i];
+      if (!d.pos || d.state === "waiting" || d.state === "departed") continue;
+      var goal = holdGoal(d, occ);
+      if (d.pos.r === goal.r && d.pos.c === goal.c) { candidates[i] = d.pos; continue; }
+      var pth = dijkstra([d.pos.r, d.pos.c], [goal.r, goal.c], blockedFromSnapshot(snap, i));
+      var cand = (pth && pth.length > 0) ? { r: pth[0][0], c: pth[0][1] } : d.pos;
+      // forming line: a linked drone never steps out of range (same rule as strategy A)
+      if (!sweep.started && d.sweepCol !== undefined && reach0.has(i)) {
+        var isLinked = function(cell){
+          var ok = false;
+          reach0.forEach(function(j){ if (j !== i && snap[j] && euclidCells(cell, snap[j]) <= CONNECT_RADIUS_CELLS) ok = true; });
+          return ok;
+        };
+        if (!isLinked(cand)) {
+          var blk = blockedFromSnapshot(snap, i), need = chebyshev(d.pos, goal) - 1, alt = null, altD = Infinity;
+          for (var adr = -1; adr <= 1; adr++) for (var adc = -1; adc <= 1; adc++) {
+            if (!adr && !adc) continue;
+            var nc = { r: d.pos.r + adr, c: d.pos.c + adc };
+            if (nc.r < 0 || nc.r >= GRID || nc.c < 0 || nc.c >= GRID || blk.has(nc.r + "," + nc.c)) continue;
+            if (chebyshev(nc, goal) !== need || !isLinked(nc)) continue;
+            var dd = euclidCells(nc, goal);
+            if (dd < altD) { altD = dd; alt = nc; }
+          }
+          cand = alt || d.pos;
+        }
+      }
+      candidates[i] = cand;
+    }
+    var committed = snap.slice();
+    for (var cj = 0; cj < drones.length; cj++) {
+      var cnd = candidates[cj];
+      if (!cnd) continue;
+      var conflict = false;
+      for (var oj = 0; oj < drones.length; oj++) {
+        if (oj !== cj && committed[oj] && committed[oj].r === cnd.r && committed[oj].c === cnd.c) { conflict = true; break; }
+      }
+      if (!conflict) committed[cj] = cnd;
+    }
+    for (var ck = 0; ck < drones.length; ck++) {
+      var d3 = drones[ck];
+      if (!committed[ck] || d3.state === "waiting" || d3.state === "departed") continue;
+      var moved = !d3.pos || d3.pos.r !== committed[ck].r || d3.pos.c !== committed[ck].c;
+      d3.pos = { r: committed[ck].r, c: committed[ck].c };
+      globalVisited.add(d3.pos.r + "," + d3.pos.c);
+      var g3 = holdGoal(d3, occ);
+      var at = d3.pos.r === g3.r && d3.pos.c === g3.c;
+      if (d3.anchorPoi !== undefined) {
+        if (at && d3.state !== "settled") { d3.state = "settled"; targets[d3.anchorPoi].heldTick = tickCount; }
+        else if (!at) d3.state = "converging";
+      } else if (d3.treeRelay) {
+        if (at) { d3.state = "settled"; d3.stalledTicks = 0; }
+        else {
+          d3.state = "converging";
+          d3.stalledTicks = moved ? 0 : (d3.stalledTicks || 0) + 1;
+          var slotN = tree.nodes[d3.slotNode];
+          var keepsLinks = slotN && slotN.parent !== null &&
+            euclidCells(d3.pos, tree.nodes[slotN.parent]) <= CONNECT_RADIUS_CELLS &&
+            tree.nodes.every(function(m){ return !m.alive || m.parent !== slotN.id || euclidCells(d3.pos, m) <= CONNECT_RADIUS_CELLS; });
+          // settle next to a blocked slot only if every link to its parent and
+          // children stays within radio range - otherwise keep waiting for the slot
+          if (d3.stalledTicks >= 15 && chebyshev(d3.pos, g3) <= 1 && !nodeAt(d3.pos.r, d3.pos.c) && keepsLinks) {
+            // slot blocked for good: settle next to it and move the network node there
+            tree.nodes[d3.slotNode].r = d3.pos.r; tree.nodes[d3.slotNode].c = d3.pos.c;
+            d3.relayTarget = { r: d3.pos.r, c: d3.pos.c };
+            d3.state = "settled"; d3.stalledTicks = 0;
+          }
+        }
+      } else if (d3.role !== "searcher") {
+        d3.state = (at && (d3.role === "sentinel" || g3.r === d3.trunkRow)) ? "settled" : "converging";
+      }
+    }
+
+    refreshStalenessFromDrones();
+    var live = snapshotPositions();
+    var reach = connectedSetFromPositions(live);
+    lastComponentCount = countComponents(live);
+    lastPointsDiscovered = targets.filter(function(t){ return t.claimedBy !== null; }).length;
+
+    targets.forEach(function(tg){
+      if (tg.discoveredTick !== null && tg.reportedTick === null && reach.has(tg.claimedBy)) tg.reportedTick = tickCount;
+      if (tg.heldTick !== undefined && tg.heldTick !== null && (tg.linkedTick === undefined || tg.linkedTick === null) && reach.has(tg.heldBy)) tg.linkedTick = tickCount;
+    });
+
+    // detection
+    for (var fi = 0; fi < drones.length; fi++) {
+      var f = drones[fi];
+      if (f.role === "sentinel" || !f.pos || f.state === "waiting" || f.state === "departed") continue;
+      for (var ti = 0; ti < targets.length; ti++) {
+        var t = targets[ti];
+        if (t.claimedBy !== null || !appeared(t)) continue;
+        if (Math.abs(t.r - f.pos.r) > DETECTION_RADIUS || Math.abs(t.c - f.pos.c) > DETECTION_RADIUS) continue;
+        t.claimedBy = f.id;
+        t.discoveredTick = tickCount;
+        t.reportedTick = reach.has(f.id) ? tickCount : null;
+        var holder;
+        var occupant = null;
+        for (var oi = 0; oi < drones.length; oi++) {
+          var od = drones[oi];
+          if (od.pos && od.pos.r === t.r && od.pos.c === t.c && od.state === "settled" && (od.trunkRow !== undefined || od.treeRelay)) occupant = od;
+        }
+        if (occupant) {
+          // a relay is already parked on the POI and linked: it simply holds it too
+          t.heldBy = occupant.id;
+          t.heldTick = tickCount;
+          t.linkedTick = reach.has(occupant.id) ? tickCount : null;
+          logEvent(droneName(f.id) + " found target " + (ti + 1) + "; relay " + droneName(occupant.id) + " is already on it and holds it.");
+          break;
+        }
+        if (f.sweepCol !== undefined && f.anchorPoi === undefined) {          // line drone: holds it, reserve fills its slot
+          var k = sweep.line.indexOf(f.id);
+          delete f.sweepCol;
+          sweep.line[k] = null;
+          holder = f.id;
+          fillSlot(k);
+        } else if (f.reserveCol !== undefined) {                              // reserve: holds it, replace the reserve
+          sweep.reserve.splice(sweep.reserve.indexOf(f.id), 1);
+          var col = f.reserveCol;
+          delete f.reserveCol;
+          holder = f.id;
+          newReserve(col);
+        } else {                                                              // parked drone: dispatch a holder
+          var h = newDroneObj(drones.length, "searcher", droneColor(drones.length), null);
+          recruitFront(h);
+          holder = h.id;
+        }
+        holdAndLink(ti, holder);
+        logEvent(droneName(f.id) + " found target " + (ti + 1) + (t.reportedTick !== null ? " (reported)" : " (report pending)") +
+                 "; held by " + droneName(holder) + ", linked into the network.");
+        break;
+      }
+    }
+
+    if (tickCount >= MAX_TICKS) {
+      stopLoop();
+      logEvent("Reached step limit \u2014 simulation halted.");
+    }
+    render();
+    updateStatus();
+  }
+
+  function missionComplete(){
+    if (MODE === "sweepHold") {
+      if (!drones) return false;
+      var reachH = connectedSetFromPositions(snapshotPositions());
+      return targets.every(function(t){
+        return appeared(t) && t.reportedTick !== null && t.heldBy !== undefined &&
+               drones[t.heldBy].state === "settled" && reachH.has(t.heldBy);
+      });
+    }
+    if (MODE === "adaptiveReport") {
+      return targets.every(function(t){ return appeared(t) && t.reportedTick !== null && t.reportedTick !== undefined; });
+    }
+    if (MODE === "sweep") {
+      return targets.every(function(t){ return appeared(t) && t.reportedTick !== null && t.reportedTick !== undefined; });
+    }
+    for (var i = 0; i < targets.length; i++) {
+      if (targets[i].claimedBy === null) return false;
+    }
+    for (var j = 0; j < drones.length; j++) {
+      if (drones[j].targetIdx !== -1 && drones[j].state !== "settled") return false;
+    }
+    var reach = connectedSetFromPositions(snapshotPositions());
+    for (var k = 0; k < targets.length; k++) {
+      if (!reach.has(targets[k].claimedBy)) return false;
+    }
+    return true;
+  }
+
+  function tick(){
+    if (missionComplete()) {
+      stopLoop();
+      return;
+    }
+    if (MODE === "sweep") { tickSweep(); return; }
+    if (MODE === "sweepHold") { tickSweepHold(); return; }
+    tickCount++;
+    ageStaleness();
+
+    attemptEntry();
+
+    // Phase 1: compute each drone's candidate move independently, against a
+    // fixed start-of-tick snapshot of everyone else's position (order-independent).
+    var snap = snapshotPositions();
+    var candidates = new Array(drones.length).fill(null);
+    var startReach = connectedSetFromPositions(snap);
+    // the explorer ring / frontier is measured only from STABLE, connected
+    // infrastructure: the sentinel, settled relays and settled anchors. Other
+    // explorers move, so leaning on them lets a drone get cut off without
+    // ever moving itself - which broke the 10 s report rule.
+    currentConnectedPositions = [];
+    startReach.forEach(function(idx){
+      var dz = drones[idx];
+      if (!snap[idx]) return;
+      var stable = dz.role === "sentinel" || dz.state === "holding" ||
+                   (dz.state === "settled" && (dz.role === "support" || dz.targetIdx !== -1));
+      if (stable) currentConnectedPositions.push(snap[idx]);
+    });
+    // cells more than one step outside the stable network: explorers and
+    // relays route AROUND these, travelling through covered territory
+    var ringOut = new Set();
+    for (var rr = 0; rr < GRID; rr++) for (var rc = 0; rc < GRID; rc++) {
+      if (distToNetwork({ r: rr, c: rc }, null) > FRONTIER_REACH) ringOut.add(rr + "," + rc);
+    }
+    // move toward `goal` through in-ring cells only; if the goal itself isn't
+    // reachable that way yet, head for the in-ring cell closest to it
+    function corridorStep(pos, goal, blocked){
+      var goalKey = goal[0] + "," + goal[1];
+      var aim = goal;
+      if (ringOut.has(goalKey)) {
+        var bestA = null, bestAD = Infinity;
+        for (var ar = 0; ar < GRID; ar++) for (var ac = 0; ac < GRID; ac++) {
+          var k = ar + "," + ac;
+          if (ringOut.has(k) || (blocked.has(k) && !(ar === pos.r && ac === pos.c))) continue;
+          var dd = euclidCells({ r: ar, c: ac }, { r: goal[0], c: goal[1] }) + 0.001 * euclidCells({ r: ar, c: ac }, pos);
+          if (dd < bestAD) { bestAD = dd; bestA = [ar, ac]; }
+        }
+        if (bestA) aim = bestA;
+      }
+      if (aim[0] === pos.r && aim[1] === pos.c) return { r: pos.r, c: pos.c };
+      var both = new Set(blocked);
+      ringOut.forEach(function(k){ both.add(k); });
+      var pth = dijkstra([pos.r, pos.c], aim, both);
+      if (pth && pth.length > 0) return { r: pth[0][0], c: pth[0][1] };
+      var direct = dijkstra([pos.r, pos.c], aim, blocked); // corridor fully blocked right now - fall back
+      return (direct && direct.length > 0) ? { r: direct[0][0], c: direct[0][1] } : { r: pos.r, c: pos.c };
+    }
+    var RECONNECT_GRACE = 1; // POIs must be reported within 10 s (~1.25 ticks), so explorers turn back after 1 tick cut off
+
+    for (var ci = 0; ci < drones.length; ci++) {
+      var drone = drones[ci];
+      if (drone.state === "settled" || drone.state === "waiting" || drone.state === "departed") continue;
+      var blocked = blockedFromSnapshot(snap, drone.id);
+      var pos = drone.pos;
+      var newPos = { r: pos.r, c: pos.c }; // default: stay put
+
+      // top priority for anyone still right by the gate: take one step away
+      // from it before any search/converge logic. (Note: we can't path
+      // toward the sentinel's exact resting cell - it's surrounded by the
+      // sentinel's own collision buffer and is unreachable by anyone else.
+      // A plain greedy "farthest unblocked neighbor" step is enough; it may
+      // take a couple of ticks working around that buffer, but it reliably
+      // clears the choke point instead of ever getting stuck deciding.)
+      if (drone.role !== "sentinel" && drone.state !== "exiting" && GATE_CELLS.some(function(g){ return chebyshev(pos, g) <= 1; })) {
+        var bestCell = null, bestDist = -1;
+        for (var dr = -1; dr <= 1; dr++) {
+          for (var dc = -1; dc <= 1; dc++) {
+            if (dr === 0 && dc === 0) continue;
+            var nr = pos.r + dr, nc = pos.c + dc;
+            if (nr < 0 || nr >= GRID || nc < 0 || nc >= GRID) continue;
+            if (blocked.has(nr + "," + nc)) continue;
+            var escapeTest = snap.slice();
+            escapeTest[drone.id] = { r: nr, c: nc };
+            if (!connectedSetFromPositions(escapeTest).has(drone.id)) continue; // must stay connected too
+            var dGate = Math.min.apply(null, GATE_CELLS.map(function(g){ return chebyshev({ r: nr, c: nc }, g); }));
+            if (dGate > bestDist) { bestDist = dGate; bestCell = { r: nr, c: nc }; }
+          }
+        }
+        if (bestCell) newPos = bestCell;
+      } else if ((drone.state === "searching" && distToNetwork(pos, pos) > FRONTIER_REACH) || (drone.reportFirst && !startReach.has(drone.id))) {
+        // been cut off past the grace period: stop exploring and head for the
+        // nearest drone that IS still connected. Once back in range the
+        // drone resumes searching with a fresh (frontier-leashed) waypoint.
+        var anchor = null, anchorD = Infinity;
+        for (var ai = 0; ai < currentConnectedPositions.length; ai++) {
+          var ad = euclidCells(pos, currentConnectedPositions[ai]);
+          if (ad < anchorD) { anchorD = ad; anchor = currentConnectedPositions[ai]; }
+        }
+        markTabu(drone, drone.waypoint || drone.lastWaypoint);
+        drone.waypoint = null;
+        if (anchor) {
+          var backPath = dijkstra([pos.r, pos.c], [anchor.r, anchor.c], blocked);
+          if (backPath && backPath.length > 0) newPos = { r: backPath[0][0], c: backPath[0][1] };
+        }
+      } else if (drone.state === "searching") {
+        var needNew = !drone.waypoint;
+        if (drone.waypoint) {
+          var wr = drone.waypoint[0], wc = drone.waypoint[1];
+          if (pos.r === wr && pos.c === wc) needNew = true;
+          if (blocked.has(wr + "," + wc)) needNew = true;
+          if (drone.wpUnseen && seenEver[staleIdx(wr, wc)]) needNew = true; // another drone already covered it
+        }
+        if (needNew) { drone.waypoint = pickWaypoint(drone, blocked); if (drone.waypoint) drone.lastWaypoint = drone.waypoint; }
+
+        if (drone.waypoint) {
+          reservedSlotCells.forEach(function(k){ if (k !== pos.r + "," + pos.c) blocked.add(k); });
+          // waypoint beyond the ring = the network must grow toward it (the relay planner reads this flag)
+          drone.atRingEdge = ringOut.has(drone.waypoint[0] + "," + drone.waypoint[1]);
+          var step = corridorStep(pos, drone.waypoint, blocked);
+          if (distToNetwork(step, pos) <= FRONTIER_REACH) newPos = step;
+          if (newPos.r === pos.r && newPos.c === pos.c && reservedSlotCells.has(pos.r + "," + pos.c)) {
+            // parked on a relay slot: step aside to any free in-ring neighbour
+            for (var sdr = -1; sdr <= 1; sdr++) for (var sdc = -1; sdc <= 1; sdc++) {
+              var sr = pos.r + sdr, sc = pos.c + sdc, sk = sr + "," + sc;
+              if ((sdr || sdc) && sr >= 0 && sr < GRID && sc >= 0 && sc < GRID && !blocked.has(sk) && !ringOut.has(sk) && newPos.r === pos.r && newPos.c === pos.c) newPos = { r: sr, c: sc };
+            }
+          }
+        }
+      } else if (drone.state === "converging") {
+        // sentinel & support drones converge on their fixed relay post; searchers converge on their claimed target
+        var goalObj = (drone.role === "sentinel" || drone.role === "support") ? drone.relayTarget : targets[drone.targetIdx];
+        // a relay's exact target cell can end up occupied by something else
+        // entirely (e.g. a searcher currently resting there) - rather than
+        // wait forever for that precise cell to free up, once we're already
+        // right next to it settle for the nearest unblocked cell instead.
+        // (Searchers converging on an actual found target never hit this:
+        // that cell is reserved the moment they claim it.)
+        if ((drone.role === "sentinel" || drone.role === "support") &&
+            blocked.has(goalObj.r + "," + goalObj.c) && chebyshev(pos, goalObj) <= 1) {
+          var altBest = null, altBestDist = Infinity;
+          for (var adr = -1; adr <= 1; adr++) {
+            for (var adc = -1; adc <= 1; adc++) {
+              var ar = goalObj.r + adr, ac = goalObj.c + adc;
+              if (ar < 0 || ar >= GRID || ac < 0 || ac >= GRID) continue;
+              if (blocked.has(ar + "," + ac)) continue;
+              var ad = chebyshev(pos, { r: ar, c: ac });
+              if (ad < altBestDist) { altBestDist = ad; altBest = { r: ar, c: ac }; }
+            }
+          }
+          if (altBest) { drone.relayTarget = altBest; goalObj = altBest; }
+        }
+        var goal = [goalObj.r, goalObj.c];
+        if (pos.r === goal[0] && pos.c === goal[1]) {
+          newPos = { r: pos.r, c: pos.c };
+        } else if (drone.role === "support") {
+          newPos = corridorStep(pos, goal, blocked); // relays extend the chain from its end, not across open ground
+        } else {
+          var pth = dijkstra([pos.r, pos.c], goal, blocked);
+          newPos = (pth && pth.length > 0) ? { r: pth[0][0], c: pth[0][1] } : { r: pos.r, c: pos.c };
+        }
+      } else if (drone.state === "exiting") {
+        // released relay heading back out - no connectivity gate needed here,
+        // the consolidation pass already proved it's not required for anyone
+        // else's connection. Head for whichever gate cell is closest.
+        var nearestGate = GATE_CELLS[0], nearestGateDist = Infinity;
+        for (var gg = 0; gg < GATE_CELLS.length; gg++) {
+          var gd = chebyshev(pos, GATE_CELLS[gg]);
+          if (gd < nearestGateDist) { nearestGateDist = gd; nearestGate = GATE_CELLS[gg]; }
+        }
+        if (pos.r === nearestGate.r && pos.c === nearestGate.c) {
+          newPos = { r: pos.r, c: pos.c }; // departs next tick, in Phase 3
+        } else {
+          var exitPath = dijkstra([pos.r, pos.c], [nearestGate.r, nearestGate.c], blocked);
+          newPos = (exitPath && exitPath.length > 0) ? { r: exitPath[0][0], c: exitPath[0][1] } : { r: pos.r, c: pos.c };
+        }
+      }
+
+      // Connectivity is no longer a hard per-move gate: a drone is allowed to
+      // move freely and be briefly disconnected (the swarm reshapes as it
+      // explores, and rigidly blocking every move that risks a momentary gap
+      // caused its own deadlocks). Instead, disconnection is monitored - see
+      // the disconnectedTicks tracking in Phase 3 - and corrected if it
+      // persists too long, rather than prevented at every single step.
+
+      candidates[drone.id] = newPos;
+    }
+
+    // Phase 2: commit moves in drone-id order, rejecting (staying put) any
+    // move that would land on a cell already occupied by another drone.
+    // Connectivity is monitored, not gated here (see the note in Phase 1) -
+    // a brief disconnection is tolerated and self-corrects via relay
+    // provisioning; only collision is a hard per-move constraint.
+    var committed = snap.slice();
+    for (var cj = 0; cj < drones.length; cj++) {
+      var cand = candidates[cj];
+      if (!cand) continue;
+      var conflict = false;
+      for (var oj = 0; oj < drones.length; oj++) {
+        if (oj === cj || committed[oj] == null) continue;
+        if (tooClose(cand, committed[oj])) { conflict = true; break; }
+      }
+      if (!conflict) committed[cj] = cand;
+    }
+
+    // Phase 3: apply committed positions, mark visited cells, and settle
+    // converging drones (or depart exiting ones) that have arrived.
+    var STALL_LIMIT = 15; // ticks a relay can sit unmoved before it gives up on its exact spot
+    var forceRecalc = false;
+    for (var ck = 0; ck < drones.length; ck++) {
+      var d3 = drones[ck];
+      if (d3.state === "settled" || d3.state === "waiting" || d3.state === "departed") continue;
+      var movedThisTick = (d3.pos.r !== committed[ck].r || d3.pos.c !== committed[ck].c);
+      d3.pos = { r: committed[ck].r, c: committed[ck].c };
+      globalVisited.add(d3.pos.r + "," + d3.pos.c);
+
+      // oscillation watchdog: if a drone has been flipping back and forth
+      // between the same two cells, stop it, send it home, and force an
+      // immediate recalculation rather than letting it churn forever.
+      if (d3.role === "searcher" && d3.state === "searching" && d3.targetIdx === -1) {
+        d3.posHistory.push(d3.pos.r + "," + d3.pos.c);
+        if (d3.posHistory.length > 8) d3.posHistory.shift();
+        if (isOscillating(d3.posHistory)) {
+          d3.state = "exiting";
+          d3.posHistory = [];
+          forceRecalc = true;
+          logEvent(droneName(d3.id) + " was oscillating between two spots - recalled to the gate.");
+          continue;
+        }
+      }
+
+      if (d3.state === "converging") {
+        var goal3 = (d3.role === "sentinel" || d3.role === "support") ? d3.relayTarget : targets[d3.targetIdx];
+        if (d3.pos.r === goal3.r && d3.pos.c === goal3.c) {
+          d3.state = "settled";
+          d3.stalledTicks = 0;
+          if (d3.role === "sentinel") {
+            logEvent(droneName(d3.id) + " took up permanent post at the gate.");
+          } else if (d3.role === "support") {
+            logEvent(droneName(d3.id) + " relay online at (" + goal3.r + ", " + goal3.c + ").");
+          } else {
+            logEvent(droneName(d3.id) + " settled on target " + (d3.targetIdx+1));
+          }
+        } else if (d3.role === "sentinel" || d3.role === "support") {
+          // give up gracefully rather than potentially waiting forever: if a
+          // relay hasn't been able to budge for a while (its exact target is
+          // blocked by something that also isn't moving, most likely), settle
+          // for wherever it currently is instead. Close is good enough - the
+          // spacing already has a small safety margin built in.
+          d3.stalledTicks = movedThisTick ? 0 : (d3.stalledTicks || 0) + 1;
+          if (d3.stalledTicks >= STALL_LIMIT) {
+            d3.relayTarget = { r: d3.pos.r, c: d3.pos.c };
+            if (d3.slotNode !== null && d3.slotNode !== undefined && tree.nodes[d3.slotNode] && !nodeAt(d3.pos.r, d3.pos.c)) {
+              tree.nodes[d3.slotNode].r = d3.pos.r; tree.nodes[d3.slotNode].c = d3.pos.c;
+            }
+            d3.state = "settled";
+            d3.stalledTicks = 0;
+            logEvent(droneName(d3.id) + " settled short of its ideal spot at (" + d3.pos.r + ", " + d3.pos.c + ") after being blocked too long.");
+          }
+        }
+      } else if (d3.state === "exiting") {
+        if (GATE_CELLS.some(function(g){ return d3.pos.r === g.r && d3.pos.c === g.c; })) {
+          d3.state = "departed";
+          d3.pos = null;
+          logEvent(droneName(d3.id) + " departed the field.");
+        }
+      }
+    }
+
+    // holding relays: wait up to HOLD_LIMIT ticks (2 min) for a slot, then go home
+    drones.forEach(function(dh){
+      if (dh.state !== "holding") return;
+      dh.holdTicks = (dh.holdTicks || 0) + 1;
+      if (dh.holdTicks >= HOLD_LIMIT) {
+        dh.state = "exiting"; dh.slotNode = null;
+        logEvent(droneName(dh.id) + " held 2 minutes with no slot opening - returning home.");
+      }
+    });
+
+    // Phase 3b: disconnection monitoring. A brief separation from the
+    // sentinel's network is tolerated (see Phase 1/2 notes) rather than
+    // blocked outright, but if a drone stays cut off too long, recall it
+    // (like the oscillation watchdog) instead of leaving it stranded
+    // indefinitely. Also where the "how many disconnected components /
+    // points discovered right now" stats get refreshed for the UI.
+    refreshStalenessFromDrones();
+    var DISCONNECT_LIMIT = 25;
+    var livePositions = snapshotPositions();
+    var sentinelReach = connectedSetFromPositions(livePositions);
+    lastComponentCount = countComponents(livePositions);
+    lastPointsDiscovered = targets.filter(function(t){ return t.claimedBy !== null; }).length;
+    for (var dc = 0; dc < drones.length; dc++) {
+      var dd = drones[dc];
+      if (dd.role !== "searcher" || dd.state !== "searching" || dd.targetIdx !== -1) continue;
+      if (sentinelReach.has(dc)) {
+        dd.disconnectedTicks = 0;
+      } else {
+        dd.disconnectedTicks = (dd.disconnectedTicks || 0) + 1;
+        if (dd.disconnectedTicks >= DISCONNECT_LIMIT) {
+          dd.state = "exiting";
+          dd.disconnectedTicks = 0;
+          dd.posHistory = [];
+          forceRecalc = true;
+          logEvent(droneName(dd.id) + " was disconnected too long - recalled to the gate.");
+        }
+      }
+    }
+
+    targets.forEach(function(tg){
+      if (tg.discoveredTick !== null && tg.reportedTick === null && sentinelReach.has(tg.claimedBy)) {
+        tg.reportedTick = tickCount;
+        drones[tg.claimedBy].reportFirst = false;
+      }
+    });
+
+    // Phase 3c: proactive relay provisioning - on its normal schedule, or
+    // forced early right after an oscillation/disconnection recall so the
+    // network responds immediately instead of waiting out the cadence.
+    if (tickCount % RECRUIT_CADENCE === 0 || forceRecalc) networkUpdate();
+
+    // Phase 4: detection. Any active, not-yet-assigned drone - a searching
+    // searcher, or a relay that's en route to or already sitting at its post
+    // - finds (at most) one undetected target inside its own 1-square
+    // buffer. If exactly one drone detects a given target this tick, it
+    // claims it alone. If several detect the SAME target on the SAME tick,
+    // one is chosen at random to lock on; the rest keep going. A relay that
+    // wins becomes a full searcher from that point on (see the role flip
+    // below) - its vacated slot gets picked up by the next provisioning pass.
+    var anyDiscovery = false;
+    var candidateTarget = new Array(drones.length).fill(-1);
+    for (var cd = 0; cd < drones.length; cd++) {
+      var d4 = drones[cd];
+      if (d4.role === "sentinel" || d4.targetIdx !== -1) continue;
+      if (d4.state !== "searching" && d4.state !== "converging" && d4.state !== "settled") continue;
+      var buf = droneDetectionZone(d4);
+      for (var ti = 0; ti < targets.length; ti++) {
+        if (targets[ti].claimedBy !== null || !appeared(targets[ti])) continue;
+        if (buf.has(targets[ti].r + "," + targets[ti].c)) { candidateTarget[d4.id] = ti; break; }
+      }
+    }
+    var byTarget = {};
+    for (var id = 0; id < drones.length; id++) {
+      var cti = candidateTarget[id];
+      if (cti === -1) continue;
+      if (!byTarget[cti]) byTarget[cti] = [];
+      byTarget[cti].push(id);
+    }
+    for (var key in byTarget) {
+      var tIdx = +key;
+      var contenders = byTarget[key];
+      var winnerId = contenders[Math.floor(Math.random() * contenders.length)];
+      var winner = drones[winnerId];
+      if (MODE === "adaptiveReport") {
+        // report only: the finder reports (stepping back into range first if it
+        // is cut off - see reportFirst) and keeps searching. No anchor, no POI tree.
+        targets[tIdx].claimedBy = winnerId;
+        targets[tIdx].discoveredTick = tickCount;
+        targets[tIdx].reportedTick = sentinelReach.has(winnerId) ? tickCount : null;
+        winner.reportFirst = !sentinelReach.has(winnerId);
+        logEvent(droneName(winnerId) + " found target " + (tIdx + 1) + (winner.reportFirst ? " out of range - heading back to report." : " and reported it; carrying on."));
+        continue;
+      }
+      var wasRelay = winner.role === "support";
+      if (wasRelay && winner.slotNode !== null && winner.slotNode !== undefined && tree.nodes[winner.slotNode]) {
+        tree.nodes[winner.slotNode].droneId = null; // its chain slot will be refilled
+      }
+      winner.slotNode = null;
+      targets[tIdx].claimedBy = winnerId;
+      targets[tIdx].discoveredTick = tickCount;
+      targets[tIdx].reportedTick = sentinelReach.has(winnerId) ? tickCount : null;
+      winner.reportFirst = !sentinelReach.has(winnerId); // step back into range to report before claiming
+      treeAddPOI(tIdx, winnerId);
+      anyDiscovery = true;
+      winner.role = "searcher"; // a relay that finds a target becomes a full explorer/finder from here on
+      winner.color = droneColor(winner.id);
+      winner.state = "converging";
+      winner.targetIdx = tIdx;
+      if (contenders.length > 1) {
+        var names = contenders.map(function(i){ return droneName(i); }).join(", ");
+        logEvent(names + " all detected target " + (tIdx+1) + " on the same tick \u2014 " + droneName(winnerId) + " won the tie-break");
+      } else if (wasRelay) {
+        logEvent(droneName(winnerId) + " (relay) spotted target " + (tIdx+1) + " and is breaking off to claim it.");
+      } else {
+        logEvent(droneName(winnerId) + " detected target " + (tIdx+1) + " at (" + targets[tIdx].r + ", " + targets[tIdx].c + ")");
+      }
+    }
+
+    if (anyDiscovery) networkUpdate(); // man the new straight chain right away
+
+    if (tickCount >= MAX_TICKS) {
+      stopLoop();
+      logEvent("Reached step limit \u2014 simulation halted.");
+    }
+
+    render();
+    updateStatus();
+  }
+
+  // ---------- Rendering ----------
+  var dpr = window.devicePixelRatio || 1;
+
+  function setupCanvas(){
+    var size = canvas.clientWidth;
+    dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(size * dpr);
+    canvas.height = Math.round(size * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    render();
+  }
+
+  function cssVar(name){
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  function render(){
+    var size = canvas.width / dpr;
+    var cell = size / GRID;
+
+    ctx.clearRect(0, 0, size, size);
+    ctx.fillStyle = cssVar("--board-bg");
+    ctx.fillRect(0, 0, size, size);
+
+    // detection zones
+    if (bufferToggle.checked) {
+      for (var ci = 0; ci < drones.length; ci++) {
+        var drone = drones[ci];
+        if (drone.state === "waiting" || drone.state === "departed") continue;
+        ctx.fillStyle = hexToRgba(drone.color, 0.14);
+        var buf = droneDetectionZone(drone);
+        buf.forEach(function(key){
+          var parts = key.split(",");
+          var r = +parts[0], c = +parts[1];
+          ctx.fillRect(c * cell, r * cell, cell, cell);
+        });
+      }
+    }
+
+    // grid lines
+    ctx.strokeStyle = cssVar("--grid-line");
+    ctx.lineWidth = 1;
+    for (var i = 0; i <= GRID; i++) {
+      var p = Math.round(i * cell) + 0.5;
+      ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, size); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(size, p); ctx.stroke();
+    }
+
+    // entry gate marker (top-middle, 3-cell-wide door)
+    ctx.strokeStyle = cssVar("--accent");
+    ctx.lineWidth = 1.6;
+    var gateMinCol = Math.min.apply(null, GATE_CELLS.map(function(g){ return g.c; }));
+    var gateSpan = Math.max.apply(null, GATE_CELLS.map(function(g){ return g.c; })) - gateMinCol + 1;
+    ctx.strokeRect(gateMinCol * cell + 1, 1, gateSpan * cell - 2, cell - 2);
+
+    // connectivity mesh: a thin line between every pair of active drones
+    // within the 100 m link range, so the chain back to the sentinel is visible
+    ctx.strokeStyle = hexToRgba(SUPPORT_COLOR, 0.35);
+    ctx.lineWidth = 1;
+    for (var li = 0; li < drones.length; li++) {
+      if (drones[li].state === "waiting" || drones[li].state === "departed") continue;
+      for (var lj = li + 1; lj < drones.length; lj++) {
+        if (drones[lj].state === "waiting" || drones[lj].state === "departed") continue;
+        if (euclidCells(drones[li].pos, drones[lj].pos) <= CONNECT_RADIUS_CELLS) {
+          ctx.beginPath();
+          ctx.moveTo(drones[li].pos.c*cell + cell/2, drones[li].pos.r*cell + cell/2);
+          ctx.lineTo(drones[lj].pos.c*cell + cell/2, drones[lj].pos.r*cell + cell/2);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // POI tree: sentinel -> relays -> anchors
+    if (tree) {
+      ctx.strokeStyle = hexToRgba("#c9a227", 0.85);
+      ctx.lineWidth = 2.2;
+      tree.nodes.forEach(function(n){
+        if (!n.alive || n.parent === null) return;
+        var pn = tree.nodes[n.parent];
+        ctx.beginPath();
+        ctx.moveTo(n.c*cell + cell/2, n.r*cell + cell/2);
+        ctx.lineTo(pn.c*cell + cell/2, pn.r*cell + cell/2);
+        ctx.stroke();
+      });
+    }
+
+    // targets
+    for (var ti = 0; ti < targets.length; ti++) {
+      var t = targets[ti];
+      if (!appeared(t)) continue;
+      var cx = t.c * cell + cell/2, cy = t.r * cell + cell/2;
+      var rad = cell * 0.28;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - rad); ctx.lineTo(cx + rad, cy); ctx.lineTo(cx, cy + rad); ctx.lineTo(cx - rad, cy);
+      ctx.closePath();
+      if (t.claimedBy !== null) {
+        ctx.fillStyle = cssVar("--text-dim");
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = cssVar("--accent");
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+      }
+    }
+
+    // drones
+    for (var ci2 = 0; ci2 < drones.length; ci2++) {
+      var drone2 = drones[ci2];
+      if (drone2.state === "waiting" || drone2.state === "departed") continue;
+      var settled = drone2.state === "settled";
+      drawAgent(drone2.pos.c*cell + cell/2, drone2.pos.r*cell + cell/2, cell*0.32, drone2.color, drone2.id+1, settled);
+    }
+  }
+
+  function drawAgent(x, y, r, color, label, settled){
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI*2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    if (settled) {
+      ctx.lineWidth = Math.max(1.5, r*0.2);
+      ctx.strokeStyle = cssVar("--board-bg");
+      ctx.stroke();
+    }
+    if (r > 6) {
+      ctx.fillStyle = "#14160f";
+      ctx.font = "600 " + Math.round(r*0.85) + "px var(--font-sans), sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String(label), x, y + 0.5);
+    }
+  }
+
+  function hexToRgba(hex, alpha){
+    var h = hex.replace("#", "");
+    var r = parseInt(h.substring(0,2), 16);
+    var g = parseInt(h.substring(2,4), 16);
+    var b = parseInt(h.substring(4,6), 16);
+    return "rgba(" + r + "," + g + "," + b + "," + alpha + ")";
+  }
+
+  // ---------- UI ----------
+  function updateStatus(){
+    var claimed = targets.filter(function(t){ return t.claimedBy !== null; }).length;
+    statTargets.textContent = claimed + " / " + targets.length;
+    statTicks.textContent = String(tickCount);
+    statSupport.textContent = String(drones.filter(function(d){ return d.role === "support" && d.state !== "departed"; }).length);
+    statComponents.textContent = String(lastComponentCount);
+    var found = targets.filter(function(t){ return t.discoveredTick !== null; });
+    var onTime = found.filter(function(t){ return t.reportedTick !== null && (t.reportedTick - t.discoveredTick) * 8 <= 10; }).length;
+    statReports.textContent = onTime + " / " + found.length;
+    statUnseen.textContent = String(unseenCount);
+    statAppeared.textContent = targets.filter(appeared).length + " / " + targets.length;
+    var rep = targets.filter(function(t){ return t.reportedTick !== null && t.reportedTick !== undefined; });
+    statDelay.textContent = rep.length ? (rep.reduce(function(s, t){ return s + (t.reportedTick - t.appearTick); }, 0) * 8 / 60 / rep.length).toFixed(1) + " min" : "-";
+    statAir.textContent = String(drones.filter(function(d){ return d.pos !== null && d.state !== "departed"; }).length);
+
+    var allClaimed = claimed === targets.length;
+
+    droneListEl.innerHTML = "";
+    for (var i = 0; i < drones.length; i++) {
+      var drone = drones[i];
+      var row = document.createElement("div");
+      row.className = "drone-row";
+      var swatch = document.createElement("span");
+      swatch.className = "swatch";
+      swatch.style.background = drone.color;
+      var name = document.createElement("span");
+      name.className = "name";
+      name.textContent = droneName(i);
+      var state = document.createElement("span");
+      state.className = "state";
+      var label = drone.state;
+      if (drone.state === "waiting") label = drone.role === "searcher" ? "queued to enter" : "queued (" + drone.role + ")";
+      if (drone.state === "searching" && allClaimed) label = "no targets left";
+      if (drone.state === "converging") {
+        label = (drone.role === "sentinel") ? "heading to post"
+              : (drone.role === "support") ? "relaying \u2192 (" + drone.relayTarget.r + "," + drone.relayTarget.c + ")"
+              : "converging \u2192 target " + (drone.targetIdx+1);
+      }
+      if (drone.state === "settled") {
+        label = (drone.role === "sentinel") ? "anchoring gate"
+              : (drone.role === "support") ? "relay online"
+              : "settled @ target " + (drone.targetIdx+1);
+      }
+      if (drone.state === "holding") label = "spare, holding " + (drone.holdTicks || 0) + "/" + HOLD_LIMIT;
+      if (drone.role === "support" && (drone.state === "converging" || drone.state === "settled")) {
+        label = ((drone.slotNode !== null && drone.slotNode !== undefined) ? "tree relay" : "explore relay") + (drone.state === "settled" ? "" : " \u2192 moving");
+      }
+      if (drone.state === "exiting") label = "returning home";
+      if (drone.state === "departed") label = "departed";
+      if (MODE === "sweepHold" && drone.state !== "waiting") {
+        label = (drone.role === "sentinel") ? "anchoring gate"
+              : (drone.anchorPoi !== undefined) ? (drone.state === "settled" ? "holding target " + (drone.anchorPoi + 1) : "\u2192 hold target " + (drone.anchorPoi + 1))
+              : (drone.treeRelay) ? (drone.state === "settled" ? "network relay" : "network relay \u2192 moving")
+              : (drone.reserveCol !== undefined) ? "reserve (behind line)"
+              : (drone.sweepCol !== undefined) ? "sweep line, col " + drone.sweepCol
+              : (drone.state === "settled" ? "trunk relay, row " + drone.trunkRow : "trunk relay \u2192 following line");
+      } else if (MODE === "sweep" && drone.state !== "waiting") {
+        label = (drone.role === "sentinel") ? "anchoring gate"
+              : (drone.sweepCol !== undefined) ? "sweep line, col " + drone.sweepCol
+              : (drone.state === "settled" ? "trunk relay, row " + drone.trunkRow : "trunk relay \u2192 following line");
+      }
+      state.textContent = label;
+      row.appendChild(swatch);
+      row.appendChild(name);
+      row.appendChild(state);
+      droneListEl.appendChild(row);
+    }
+  }
+
+  function renderLog(){
+    logBox.innerHTML = "";
+    for (var i = 0; i < logs.length; i++) {
+      var line = document.createElement("div");
+      var span = document.createElement("span");
+      span.textContent = "t" + logs[i].tick;
+      line.appendChild(span);
+      line.appendChild(document.createTextNode(logs[i].msg));
+      logBox.appendChild(line);
+    }
+    logBox.scrollTop = logBox.scrollHeight;
+  }
+
+  function startLoop(){
+    if (running) return;
+    running = true;
+    btnStart.textContent = "Pause";
+    var speed = +speedRange.value;
+    timer = setInterval(tick, speed);
+  }
+
+  function stopLoop(){
+    running = false;
+    btnStart.textContent = "Start";
+    if (timer) clearInterval(timer);
+    timer = null;
+  }
+
+  function resetSim(){
+    stopLoop();
+    N_EXPLORERS = clamp(+droneRange.value, 1, 40);
+    targets = randomTargets(N_TARGETS);
+    targets.forEach(function(t){ t.discoveredTick = null; t.reportedTick = null; });
+    APPEAR_WINDOW_TICKS = Math.round(+appearRange.value * 60 / 8);   // minutes -> 8 s ticks
+    targets.forEach(function(t){
+      t.appearTick = (APPEAR_WINDOW_TICKS > 0) ? Math.floor(Math.random() * (APPEAR_WINDOW_TICKS + 1)) : 0;
+    });
+    MODE = modeSelect.value;
+    drones = (MODE === "sweep") ? initSweepDrones() : (MODE === "sweepHold") ? initSweepHoldDrones() : initDrones(N_EXPLORERS + 1);
+    treeInit();
+    if (MODE === "sweepHold") initTrunkNodes();
+    entryQueue = drones.map(function(d){ return d.id; });
+    if (MODE === "sweepHold") {
+      // trunk relays wait outside until the line starts sweeping, so they can't
+      // park on the gate and block a replacement line drone during formation
+      sweep.pendingTrunk = entryQueue.filter(function(id){ return drones[id].trunkRow !== undefined; });
+      entryQueue = entryQueue.filter(function(id){ return drones[id].trunkRow === undefined; });
+    }
+    globalVisited = new Set();
+    resetStaleness();
+    resetSeen();
+    lastComponentCount = 1;
+    lastPointsDiscovered = 0;
+    tickCount = 0;
+    logs = [];
+    logEvent("New sweep: " + N_TARGETS + " targets, " + N_EXPLORERS + " explorers. Relays are recruited as needed.");
+    render();
+    updateStatus();
+  }
+
+  btnStart.addEventListener("click", function(){
+    if (running) stopLoop(); else startLoop();
+  });
+  btnStep.addEventListener("click", function(){
+    stopLoop();
+    tick();
+  });
+  btnReset.addEventListener("click", resetSim);
+  speedRange.addEventListener("input", function(){
+    speedVal.textContent = speedRange.value + " ms";
+    if (running) { stopLoop(); startLoop(); }
+  });
+  bufferToggle.addEventListener("change", render);
+  droneRange.addEventListener("input", function(){
+    droneVal.textContent = droneRange.value;
+  });
+
+  window.addEventListener("resize", debounce(setupCanvas, 120));
+
+  function debounce(fn, ms){
+    var t;
+    return function(){
+      clearTimeout(t);
+      t = setTimeout(fn, ms);
+    };
+  }
+
+  // ---------- init ----------
+  resetSim();
+  requestAnimationFrame(setupCanvas);
+})();
+</script>
+</body>
+</html>
