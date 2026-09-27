@@ -61,6 +61,8 @@ PUSHPAK_2026_BVLOS/
 ├── Sector_Sweep_global_memory.html        # Multi-strategy simulator (browser)
 ├── docs/
 │   └── UAV-X_Stage1_Technical_Proposal.pdf
+├── pushpak_runs_raw.csv 
+├── pushpak_summary_stats.csv
 └── README.md
 ```
 
