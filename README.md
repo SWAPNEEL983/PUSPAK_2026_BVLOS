@@ -89,9 +89,9 @@ The T-sweep page exposes a headless test hook, `window.__PUSHPAK`, with `reset`,
 
 ### Python
 ```bash
-python sector_sweep.py        [ arguments … ]
-python mst_montecarlo.py      [ arguments … ]
-python fleet_sweep.py --workers N   [ further arguments … ]
+python3 sector_sweep.py       
+python3 mst_montecarlo.py     
+python3 fleet_sweep.py --workers N   
 ```
 
 ---
