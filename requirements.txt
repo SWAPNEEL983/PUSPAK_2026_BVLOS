@@ -1,0 +1,31 @@
+# Sector Sweep - drone swarm simulation
+# Install: pip install -r requirements.txt
+
+# ---------- Core simulation ----------
+numpy>=1.26        # positions as arrays; vectorised pairwise distances for separation (20 m),
+                   # comm range (100 m) and tether (150 m) checks; seeded RNG via np.random.default_rng
+scipy>=1.11        # linear_sum_assignment (Hungarian relay-to-slot matching),
+                   # spatial.cKDTree (fast "who is within 100 m" neighbour queries)
+networkx>=3.2      # comm graph: connectivity checks, hop counts to the sentinel,
+                   # Steiner tree approximation for the POI network
+shapely>=2.0       # geometry: sector polygons, sweep lanes, arena bounds, coverage area
+
+# ---------- Experiments & analysis ----------
+pandas>=2.1        # batch-run results (n, lambda, seed -> coverage time, peak drones, missed reports)
+matplotlib>=3.8    # plots: success rate vs. n, coverage curves, quick static snapshots of a run
+tqdm>=4.66         # progress bars for long batch sweeps
+
+# ---------- Config & testing ----------
+pyyaml>=6.0        # scenario/parameter files (arena size, speed, range, n, lambda, seeds)
+pytest>=7.4        # tests for the invariants: separation never violated, tether never broken,
+                   # every report delivered within 10 s
+
+# ---------- Optional (uncomment when needed) ----------
+# numba>=0.59      # JIT-compile hot loops if the per-tick update gets slow at large batch sizes
+# seaborn>=0.13    # nicer statistical plots for sweep results
+
+# ---------- Standard library (no install needed) ----------
+# multiprocessing / concurrent.futures - run seeded layouts in parallel across CPU cores
+# dataclasses                          - Drone, Relay, POI, Config structures
+# json                                 - write per-tick run traces for the HTML replay viewer
+# argparse                             - CLI: single run vs. batch sweep
