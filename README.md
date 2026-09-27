@@ -68,11 +68,9 @@ PUSHPAK_2026_BVLOS/
 
 ## Installation
 
-**Requirements:** [ OS ] · Python [ version ] · any modern web browser
+**Requirements:** Windows/Linux · Python 3.13 · any modern web browser
 
 ```bash
-git clone [ repo URL ]
-cd [ repo-name ]
 pip install -r requirements.txt
 ```
 
