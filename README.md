@@ -138,10 +138,11 @@ Not yet measured: packet delivery ratio, latency, connectivity availability, rec
 
 | Member | Role / contribution |
 |---|---|
-| [ … ] | [ … ] |
+|Soham Bhattacharyya|Multi Agent Architecture|
+|Swapneel Banerjee|Multi Agent Optimization|
 
 ## License
-[ … ]
+No License
 
 ## References
 1. A. M. Andrew, "Another efficient algorithm for convex hulls in two dimensions," *Information Processing Letters*, 9(5), 1979.
